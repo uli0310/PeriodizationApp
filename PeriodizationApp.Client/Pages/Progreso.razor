@@ -1,0 +1,313 @@
+﻿@page "/progreso"
+@using PeriodizationApp.Core.Entities
+@using ApexCharts
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Dashboard de Fuerza y Volumen - Odysseus</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <MudText Typo="Typo.h4" Class="fw-bold">📈 Dashboard Analítico de Fuerza y Volumen</MudText>
+        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">
+            Monitoreo de 1RM Estimado (Epley), Tonelaje y Semáforo de Volumen Muscular (MEV / MAV / MRV)
+        </MudText>
+    </div>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.AddChart" Href="/registrar">
+        Registrar Nueva Serie
+    </MudButton>
+</div>
+<MudDivider Class="mb-4" />
+
+@if (exercises == null || todasLasSeries == null)
+{
+    <div class="d-flex align-items-center gap-3 my-5">
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        <MudText><em>Analizando métricas biomecánicas e historial...</em></MudText>
+    </div>
+}
+else
+{
+    <!-- =========================================================
+         1. TARJETAS KPI GLOBALES
+         ========================================================= -->
+    <MudGrid Class="mb-5">
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="3" Class="pa-4" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 14px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">SERIES EFECTIVAS TOTALES</MudText>
+                <MudText Typo="Typo.h4" Color="Color.Primary" Class="fw-bold mt-1">@todasLasSeries.Count</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Info">Registradas en base de datos</MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="3" Class="pa-4" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 14px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">TONELAJE TOTAL MOVIDO</MudText>
+                <MudText Typo="Typo.h4" Color="Color.Success" Class="fw-bold mt-1">
+                    @($"{todasLasSeries.Sum(s => s.Weight * s.ActualReps):N0} kg")
+                </MudText>
+                <MudText Typo="Typo.caption" Color="Color.Success">Volumen mecánico acumulado</MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="3" Class="pa-4" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 14px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">RIR PROMEDIO GLOBAL</MudText>
+                <MudText Typo="Typo.h4" Color="Color.Warning" Class="fw-bold mt-1">
+                    @(todasLasSeries.Any() ? Math.Round(todasLasSeries.Average(s => s.ActualRIR), 1).ToString() : "2.0")
+                </MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Zona óptima recomendada: 1.0 - 2.5</MudText>
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="3" Class="pa-4" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border: 1px solid rgba(139, 92, 246, 0.25); border-radius: 14px;">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">RÉCORD 1RM HISTÓRICO</MudText>
+                <MudText Typo="Typo.h4" Color="Color.Info" Class="fw-bold mt-1">
+                    @(todasLasSeries.Any() ? $"{todasLasSeries.Max(s => s.Estimated1RM)} kg" : "0 kg")
+                </MudText>
+                <MudText Typo="Typo.caption" Color="Color.Info">Pico máximo estimado</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- =========================================================
+         2. SEMÁFORO DE VOLUMEN POR GRUPO MUSCULAR (MEV / MAV / MRV)
+         ========================================================= -->
+    <MudCard Elevation="3" Class="mb-5 pa-4" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border-radius: 16px;">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <div class="d-flex align-items-center gap-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Equalizer" Color="Color.Primary" />
+                    <MudText Typo="Typo.h6" Class="fw-bold">Semáforo de Volumen Acumulado por Grupo Muscular (MEV / MAV / MRV)</MudText>
+                </div>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Referencia científica por bloque/semana: <strong>&lt;6 series</strong> (Mantenimiento) | <strong>6-9 series</strong> (MEV) | <strong>10-18 series</strong> (MAV - Óptimo Hipertrofia) | <strong>&gt;18 series</strong> (MRV - Riesgo Fatiga)
+                </MudText>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            <MudGrid>
+                @foreach (var vol in ObtenerVolumenPorGrupoMuscular())
+                {
+                    <MudItem xs="12" sm="6" md="4">
+                        <div class="p-3 rounded-3" style="background-color: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06);">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <MudText Typo="Typo.subtitle2" Class="fw-bold">@vol.Grupo</MudText>
+                                <MudChip T="string" Size="Size.Small" Color="@vol.ColorEstado" Variant="Variant.Outlined">
+                                    @vol.Series series — @vol.Etiqueta
+                                </MudChip>
+                            </div>
+                            <MudProgressLinear Color="@vol.ColorEstado"
+                                               Value="@Math.Min(100, (vol.Series / 20.0) * 100.0)"
+                                               Rounded="true"
+                                               Size="Size.Medium" />
+                        </div>
+                    </MudItem>
+                }
+            </MudGrid>
+        </MudCardContent>
+    </MudCard>
+
+    <!-- =========================================================
+         3. ANÁLISIS ESPECÍFICO POR EJERCICIO (GRÁFICA APEXCHARTS + HISTORIAL)
+         ========================================================= -->
+    <MudCard Elevation="4" Class="pa-4" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border-radius: 16px;">
+        <MudCardContent>
+            <MudGrid Class="align-items-center mb-4">
+                <MudItem xs="12" md="6">
+                    <MudSelect T="Guid"
+                               Label="Selecciona un ejercicio para analizar su curva de 1RM"
+                               Value="ejercicioSeleccionado"
+                               ValueChanged="OnEjercicioSeleccionadoAsync"
+                               Variant="Variant.Outlined"
+                               AdornmentIcon="@Icons.Material.Filled.FitnessCenter"
+                               AdornmentColor="Color.Primary">
+                        <MudSelectItem T="Guid" Value="@Guid.Empty">-- Selecciona un ejercicio del catálogo --</MudSelectItem>
+                        @foreach (var ex in exercises.OrderBy(e => e.Name))
+                        {
+                            var conteo = todasLasSeries.Count(s => s.ExerciseId == ex.Id);
+                            <MudSelectItem T="Guid" Value="@ex.Id">
+                                @ex.Name @(conteo > 0 ? $"({conteo} series)" : "")
+                            </MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+
+                @if (historialSeries != null && historialSeries.Any())
+                {
+                    <MudItem xs="6" md="3">
+                        <div class="p-3 rounded-3 text-center" style="background-color: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.25);">
+                            <small class="text-primary fw-bold d-block">MEJOR 1RM EN ESTE EJERCICIO</small>
+                            <span class="fs-3 fw-bold text-light">@historialSeries.Max(s => s.Estimated1RM) kg</span>
+                        </div>
+                    </MudItem>
+                    <MudItem xs="6" md="3">
+                        <div class="p-3 rounded-3 text-center" style="background-color: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.25);">
+                            <small class="text-success fw-bold d-block">SERIES REGISTRADAS</small>
+                            <span class="fs-3 fw-bold text-light">@historialSeries.Count</span>
+                        </div>
+                    </MudItem>
+                }
+            </MudGrid>
+
+            @if (cargandoHistorial)
+            {
+                <div class="d-flex align-items-center gap-3 my-4">
+                    <MudProgressCircular Color="Color.Info" Indeterminate="true" Size="Size.Small" />
+                    <MudText Color="Color.Info">Generando curva de fuerza...</MudText>
+                </div>
+            }
+            else if (historialSeries != null && historialSeries.Any())
+            {
+                <div class="mb-5 p-3 rounded-3" style="background-color: #1e2126; border: 1px solid #2a2e35;">
+                    <MudText Typo="Typo.h6" Color="Color.Info" Class="fw-bold mb-3">
+                        Evolución de Fuerza (1RM Estimado en kg)
+                    </MudText>
+
+                    <ApexChart @key="ejercicioSeleccionado" TItem="SetRecord" Title="" Height="320" Options="opcionesGrafica">
+                        <ApexPointSeries TItem="SetRecord"
+                                         Items="historialSeries"
+                                         Name="1RM Estimado (kg)"
+                                         SeriesType="SeriesType.Area"
+                                         XValue="@(e => $"S{historialSeries.IndexOf(e) + 1}: {e.Weight}kg x {e.ActualReps}")"
+                                         YValue="@(e => e.Estimated1RM)" />
+                    </ApexChart>
+                </div>
+
+                <MudText Typo="Typo.h6" Color="Color.Warning" Class="fw-bold mb-3">
+                    Historial Detallado del Ejercicio
+                </MudText>
+                <MudTable Items="@historialSeries.AsEnumerable().Reverse()" Hover="true" Striped="true" Dense="true" Elevation="0">
+                    <HeaderContent>
+                        <MudTh>Carga (kg)</MudTh>
+                        <MudTh>Repeticiones</MudTh>
+                        <MudTh>RIR</MudTh>
+                        <MudTh>Tonelaje</MudTh>
+                        <MudTh>1RM Estimado</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Carga (kg)"><strong>@context.Weight kg</strong></MudTd>
+                        <MudTd DataLabel="Repeticiones">@context.ActualReps reps</MudTd>
+                        <MudTd DataLabel="RIR">
+                            <MudChip T="string" Size="Size.Small" Color="@(context.ActualRIR <= 2 ? Color.Success : Color.Info)">
+                                RIR @context.ActualRIR
+                            </MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Tonelaje">@(context.Weight * context.ActualReps) kg</MudTd>
+                        <MudTd DataLabel="1RM Estimado"><span class="text-info fw-bold">@context.Estimated1RM kg</span></MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+            else if (ejercicioSeleccionado != Guid.Empty)
+            {
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mt-3">
+                    Aún no hay series registradas para este ejercicio. ¡Ve a <strong>Registrar Serie</strong> para capturar tu primer levantamiento!
+                </MudAlert>
+            }
+        </MudCardContent>
+    </MudCard>
+}
+
+@code {
+    private List<Exercise>? exercises;
+    private List<SetRecord>? todasLasSeries;
+    private List<SetRecord>? historialSeries;
+    private Guid ejercicioSeleccionado = Guid.Empty;
+    private bool cargandoHistorial = false;
+
+    private record VolumenMuscular(string Grupo, int Series, string Etiqueta, Color ColorEstado);
+
+    private ApexChartOptions<SetRecord> opcionesGrafica = new ApexChartOptions<SetRecord>
+    {
+        Theme = new Theme { Mode = Mode.Dark },
+        Chart = new Chart { Background = "transparent" },
+        Stroke = new Stroke { Curve = Curve.Smooth },
+        DataLabels = new DataLabels { Enabled = false }
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            exercises = await Http.GetFromJsonAsync<List<Exercise>>("api/Exercises") ?? new();
+            todasLasSeries = await Http.GetFromJsonAsync<List<SetRecord>>("api/SetRecords") ?? new();
+
+            // Si ya hay algún ejercicio con series registradas, seleccionamos automáticamente el más entrenado
+            var ejercicioConDatos = todasLasSeries
+                .GroupBy(s => s.ExerciseId)
+                .OrderByDescending(g => g.Count())
+                .Select(g => g.Key)
+                .FirstOrDefault();
+
+            if (ejercicioConDatos != Guid.Empty)
+            {
+                await OnEjercicioSeleccionadoAsync(ejercicioConDatos);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error al cargar métricas: {ex.Message}", Severity.Error);
+            exercises ??= new();
+            todasLasSeries ??= new();
+        }
+    }
+
+    private IEnumerable<VolumenMuscular> ObtenerVolumenPorGrupoMuscular()
+    {
+        var grupos = new (string Nombre, string[] Claves)[]
+        {
+            ("Pecho", new[] { "Pecho" }),
+            ("Espalda", new[] { "Espalda", "Dorsal", "Trapecio" }),
+            ("Pierna (Cuádriceps/Glúteo/Isquios)", new[] { "Cuádriceps", "Glúteo", "Isquiotibiales", "Pantorrilla", "Pierna" }),
+            ("Hombro", new[] { "Hombro" }),
+            ("Bíceps", new[] { "Bíceps" }),
+            ("Tríceps", new[] { "Tríceps" })
+        };
+
+        var mapaEjercicios = (exercises ?? new()).ToDictionary(e => e.Id, e => e.MuscleGroup ?? string.Empty);
+
+        foreach (var g in grupos)
+        {
+            int conteo = (todasLasSeries ?? new()).Count(s =>
+                mapaEjercicios.TryGetValue(s.ExerciseId, out var musculos) &&
+                g.Claves.Any(c => musculos.Contains(c, StringComparison.OrdinalIgnoreCase)));
+
+            var (etiqueta, color) = conteo switch
+            {
+                < 6 => ("Bajo MEV / Mantenimiento", Color.Info),
+                < 10 => ("MEV (Volumen Efectivo)", Color.Primary),
+                <= 18 => ("MAV (Óptimo Hipertrofia)", Color.Success),
+                _ => ("MRV (Alerta Fatiga)", Color.Warning)
+            };
+
+            yield return new VolumenMuscular(g.Nombre, conteo, etiqueta, color);
+        }
+    }
+
+    private async Task OnEjercicioSeleccionadoAsync(Guid nuevoId)
+    {
+        ejercicioSeleccionado = nuevoId;
+        if (ejercicioSeleccionado != Guid.Empty)
+        {
+            cargandoHistorial = true;
+            try
+            {
+                var data = await Http.GetFromJsonAsync<List<SetRecord>>($"api/SetRecords/exercise/{ejercicioSeleccionado}");
+                historialSeries = data?.OrderBy(s => s.Id).ToList();
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Error al cargar historial: {ex.Message}", Severity.Error);
+            }
+            finally
+            {
+                cargandoHistorial = false;
+            }
+        }
+        else
+        {
+            historialSeries = null;
+        }
+    }
+}

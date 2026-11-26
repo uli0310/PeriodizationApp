@@ -1,0 +1,714 @@
+﻿@page "/registrar"
+@page "/registrar/{SessionId:guid}"
+@page "/registrar-series/{SessionId:guid}"
+@page "/sesion/{SessionId:guid}"
+
+@using PeriodizationApp.Core.Entities
+@using System.Timers
+@implements IDisposable
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Capturar Serie - Odysseus</PageTitle>
+
+<style>
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+
+    input[type=number] {
+        -moz-appearance: textfield;
+    }
+</style>
+
+<!-- ENCABEZADO Y CONTROLES SUPERIORES -->
+<div class="mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
+        <div class="d-flex align-items-center gap-2">
+            <MudText Typo="Typo.h4" Class="fw-bold">🏋️‍♂️ Consola de Entrenamiento en Vivo</MudText>
+            @if (sesionActual != null)
+            {
+                <MudChip T="string" Color="Color.Primary" Size="Size.Small" Icon="@Icons.Material.Filled.EventAvailable">
+                    @sesionActual.Name
+                </MudChip>
+            }
+            else
+            {
+                <MudChip T="string" Color="Color.Info" Size="Size.Small" Variant="Variant.Outlined">
+                    Entrenamiento Libre
+                </MudChip>
+            }
+        </div>
+        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">
+            Autorregulación por RIR, cálculo de 1RM en tiempo real y temporizador biomecánico de descanso
+        </MudText>
+    </div>
+
+    <div class="d-flex gap-2 align-items-center">
+        @if (sesionActual != null)
+        {
+            <MudButton Variant="Variant.Outlined"
+                       Color="@(sesionActual.CompletedDate.HasValue ? Color.Success : Color.Primary)"
+                       StartIcon="@Icons.Material.Filled.TaskAlt"
+                       OnClick="FinalizarSesionActualAsync">
+                @(sesionActual.CompletedDate.HasValue ? "Sesión Completada" : "Finalizar Sesión")
+            </MudButton>
+        }
+
+        <MudButton Variant="Variant.Outlined"
+                   Color="Color.Warning"
+                   StartIcon="@Icons.Material.Filled.Pets"
+                   OnClick="ToggleModoGato">
+            @(modoGatoActivo ? "Ocultar Michi" : "Modo Michi Mamado")
+        </MudButton>
+
+        <MudIconButton Icon="@Icons.Material.Filled.Info"
+                       Color="Color.Info"
+                       Variant="Variant.Outlined"
+                       OnClick="@(() => mostrarModalRIR = true)" />
+    </div>
+</div>
+<MudDivider Class="mb-4" />
+
+<!-- CRONÓMETRO DE DESCANSO INTELIGENTE (ACTIVO TRAS GUARDAR SERIE) -->
+@if (descansoActivo || segundosRestantesDescanso > 0)
+{
+    var porcentajeDescanso = segundosTotalesDescanso > 0
+        ? Math.Round((segundosRestantesDescanso / (double)segundosTotalesDescanso) * 100.0, 0)
+        : 0;
+
+    <MudCard Elevation="4" Class="mb-4 pa-3" Style="background: linear-gradient(135deg, rgba(37, 99, 235, 0.2), rgba(16, 185, 129, 0.15)); border: 1px solid rgba(59, 130, 246, 0.45); border-radius: 16px;">
+        <MudCardContent Class="py-2">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                <div class="d-flex align-items-center gap-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Timer" Color="Color.Info" />
+                    <div>
+                        <MudText Typo="Typo.subtitle1" Class="fw-bold">
+                            ⏱️ Descanso Biomecánico: @FormatearTiempo(segundosRestantesDescanso)
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @(EjercicioSeleccionado?.IsCompound == true
+                                ? "Ejercicio Compuesto (3:00 min recomendados para disipar fatiga del SNC y resíntesis de ATP-PCr)"
+                                : "Ejercicio de Aislamiento (1:30 min recomendados para recuperación local)")
+                        </MudText>
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info" OnClick="@(() => AjustarDescanso(-15))">-15s</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info" OnClick="@(() => AjustarDescanso(30))">+30s</MudButton>
+                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Error" OnClick="DetenerDescanso">Saltar</MudButton>
+                </div>
+            </div>
+            <MudProgressLinear Color="Color.Info" Value="@porcentajeDescanso" Rounded="true" Size="Size.Large" />
+        </MudCardContent>
+    </MudCard>
+}
+
+@if (exercises == null)
+{
+    <div class="d-flex align-items-center gap-3 my-5">
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        <MudText><em>Cargando arsenal de ejercicios...</em></MudText>
+    </div>
+}
+else
+{
+    <div class="row">
+        <!-- COLUMNA IZQUIERDA: CAPTURA DE SERIE -->
+        <div class="@(modoGatoActivo ? "col-lg-7" : "col-lg-12") transition-all">
+            <div class="card shadow-lg border-0 mb-4 p-2">
+                <div class="card-body p-4">
+
+                    <!-- 1. SELECTOR DE EJERCICIO -->
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-1">
+                            <label class="form-label fw-bold mb-0" style="color: #94a3b8;">1. Ejercicio</label>
+                            @if (EjercicioSeleccionado != null)
+                            {
+                                <div class="d-flex gap-1">
+                                    <MudChip T="string" Size="Size.Small" Color="@(EjercicioSeleccionado.IsCompound ? Color.Success : Color.Info)">
+                                        @(EjercicioSeleccionado.IsCompound ? "⚡ Compuesto (Descanso 3:00)" : "🎯 Aislamiento (Descanso 1:30)")
+                                    </MudChip>
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default">
+                                        @EjercicioSeleccionado.MuscleGroup
+                                    </MudChip>
+                                </div>
+                            }
+                        </div>
+
+                        <select class="form-select form-select-lg shadow-sm bg-dark text-white border-secondary"
+                                value="@nuevoRegistro.ExerciseId"
+                                @onchange="OnEjercicioCambiadoAsync">
+                            <option value="@Guid.Empty">-- Elige del catálogo (@exercises.Count ejercicios) --</option>
+                            @foreach (var ex in exercises.OrderBy(e => e.Name))
+                            {
+                                <option value="@ex.Id">@ex.Name (@ex.MuscleGroup)</option>
+                            }
+                        </select>
+
+                        <!-- TARJETA DE HISTORIAL PREVIO Y SUGERENCIA DE SOBRECARGA PROGRESIVA -->
+                        @if (ultimoRegistroEjercicio != null)
+                        {
+                            var sugerencia = CalcularSugerenciaProgresion(ultimoRegistroEjercicio, EjercicioSeleccionado?.IsCompound ?? true);
+
+                            <div class="mt-3 p-3 rounded-3" style="background-color: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.25);">
+                                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                    <div>
+                                        <small class="text-info fw-bold d-block">
+                                            📊 ÚLTIMA SERIE REGISTRADA: @ultimoRegistroEjercicio.Weight kg × @ultimoRegistroEjercicio.ActualReps reps @("@") RIR @ultimoRegistroEjercicio.ActualRIR (1RM: @ultimoRegistroEjercicio.Estimated1RM kg)
+                                        </small>
+                                        <small class="text-light d-block mt-1">
+                                            💡 <strong>Meta sugerida hoy:</strong> <span class="text-success fw-bold">@sugerencia.PesoSugerido kg × @sugerencia.RepsSugeridas reps</span> — <em>@sugerencia.Motivo</em>
+                                        </small>
+                                    </div>
+                                    <MudButton Size="Size.Small"
+                                               Variant="Variant.Filled"
+                                               Color="Color.Info"
+                                               StartIcon="@Icons.Material.Filled.AutoFixHigh"
+                                               OnClick="@(() => AplicarSugerencia(sugerencia.PesoSugerido, sugerencia.RepsSugeridas))">
+                                        Usar Sugerencia
+                                    </MudButton>
+                                </div>
+                            </div>
+                        }
+
+                        @if (nuevoRegistro.ExerciseId != Guid.Empty)
+                        {
+                            <a href="@ObtenerLinkYouTube()" target="_blank" class="btn btn-outline-danger w-100 mt-3 d-flex align-items-center justify-content-center border-0" style="background-color: rgba(220, 53, 69, 0.1);">
+                                <span class="fs-5 me-2">▶️</span> Tutorial de técnica en YouTube
+                            </a>
+                        }
+                    </div>
+
+                    <!-- 2. CARGA Y 3. REPETICIONES -->
+                    <div class="row mb-4">
+                        <div class="col-12 col-md-6 mb-4 mb-md-0">
+                            <label class="form-label fw-bold text-light">2. Carga (kg)</label>
+                            <div class="input-group input-group-lg shadow-sm">
+                                <button class="btn btn-outline-secondary fw-bold px-4" type="button" @onclick="() => CambiarPeso(-1.25m)">-</button>
+                                <input type="number" class="form-control bg-dark text-white border-secondary text-center fw-bold fs-4" @bind="nuevoRegistro.Weight" step="1.25" />
+                                <button class="btn btn-outline-secondary fw-bold px-4" type="button" @onclick="() => CambiarPeso(1.25m)">+</button>
+                            </div>
+                        </div>
+
+                        <div class="col-12 col-md-6">
+                            <label class="form-label fw-bold text-light">3. Repeticiones Logradas</label>
+                            <div class="input-group input-group-lg shadow-sm">
+                                <button class="btn btn-outline-secondary fw-bold px-4" type="button" @onclick="() => CambiarReps(-1)">-</button>
+                                <input type="number" class="form-control bg-dark text-white border-secondary text-center fw-bold fs-4" @bind="nuevoRegistro.ActualReps" />
+                                <button class="btn btn-outline-secondary fw-bold px-4" type="button" @onclick="() => CambiarReps(1)">+</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 4. RIR -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold text-light d-flex justify-content-between">
+                            <span>4. RIR (Repeticiones en Reserva)</span>
+                            <span class="badge bg-primary rounded-pill">Target óptimo: 1-2</span>
+                        </label>
+                        <div class="input-group input-group-lg shadow-sm">
+                            <button class="btn btn-outline-secondary fw-bold px-4" type="button" @onclick="() => CambiarRIR(-1)">-</button>
+                            <input type="number" class="form-control bg-dark text-white border-secondary text-center fw-bold fs-4" @bind="nuevoRegistro.ActualRIR" />
+                            <button class="btn btn-outline-secondary fw-bold px-4" type="button" @onclick="() => CambiarRIR(1)">+</button>
+                        </div>
+                        <small class="text-muted mt-1 d-block">¿Cuántas repeticiones más podías hacer antes del fallo muscular?</small>
+                    </div>
+
+                    <!-- PREVISUALIZACIÓN EN VIVO DE 1RM Y TONELAJE -->
+                    <div class="row mb-4">
+                        <div class="col-6">
+                            <div class="p-3 rounded-3 text-center" style="background-color: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2);">
+                                <small class="text-primary fw-bold d-block">1RM ESTIMADO (EPLEY)</small>
+                                <span class="fs-4 fw-bold text-light">@Calcular1RMEnVivo() kg</span>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="p-3 rounded-3 text-center" style="background-color: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2);">
+                                <small class="text-success fw-bold d-block">TONELAJE DE LA SERIE</small>
+                                <span class="fs-4 fw-bold text-light">@(nuevoRegistro.Weight * nuevoRegistro.ActualReps) kg</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary btn-lg w-100 fw-bold py-3 shadow" @onclick="GuardarSerie" disabled="@estaGuardando">
+                        @if (estaGuardando)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                            <span>Procesando...</span>
+                        }
+                        else
+                        {
+                            <span>Guardar Serie #@((seriesDeEstaSesion?.Count ?? 0) + 1) e Iniciar Descanso</span>
+                        }
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MÓDULO DE MOTIVACIÓN DINÁMICO -->
+        @if (modoGatoActivo)
+        {
+            <div class="col-lg-5 transition-all mb-4">
+                <div class="card border-0 bg-dark text-white p-3 h-100 shadow-lg">
+                    <div class="card-body d-flex flex-column justify-content-between">
+                        <div>
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h5 class="fw-bold mb-0 text-warning">😹 MURAL MOTIVACIONAL</h5>
+                                <span class="badge bg-danger rounded-pill">🔥 MODO FITCAT</span>
+                            </div>
+
+                            <div class="overflow-hidden rounded-3 mb-3 border border-secondary shadow-sm" style="height: 280px;">
+                                <img src="@imagenesMichis[indiceImagenActual]" class="img-fluid w-100 h-100" style="object-fit: cover; transition: opacity 0.5s ease-in-out;" alt="Meme Gato Mamado" />
+                            </div>
+                        </div>
+
+                        <div class="p-3 rounded-3 mt-auto" style="background-color: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.07);">
+                            <div class="d-flex align-items-center">
+                                <span class="fs-3 me-3">🐈‍⬛</span>
+                                <div>
+                                    <small class="text-warning d-block fw-bold">EL MICHI DICE:</small>
+                                    <small class="text-light" style="font-style: italic;">"@consejoActual"</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- BITÁCORA DE SERIES REGISTRADAS EN ESTA SESIÓN -->
+    <MudCard Elevation="3" Class="mt-2 pa-3" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border-radius: 16px;">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div class="d-flex align-items-center gap-2">
+                        <MudIcon Icon="@Icons.Material.Filled.HistoryEdu" Color="Color.Primary" />
+                        <MudText Typo="Typo.h6" Class="fw-bold">
+                            Bitácora de Series @(sesionActual != null ? $"({sesionActual.Name})" : "(Sesión Actual)")
+                        </MudText>
+                    </div>
+                    @if (seriesDeEstaSesion != null && seriesDeEstaSesion.Any())
+                    {
+                        <div class="d-flex gap-2">
+                            <MudChip T="string" Color="Color.Primary" Size="Size.Small">
+                                @seriesDeEstaSesion.Count serie(s)
+                            </MudChip>
+                            <MudChip T="string" Color="Color.Success" Size="Size.Small">
+                                Tonelaje Acumulado: @seriesDeEstaSesion.Sum(s => s.Weight * s.ActualReps) kg
+                            </MudChip>
+                        </div>
+                    }
+                </div>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            @if (seriesDeEstaSesion == null || !seriesDeEstaSesion.Any())
+            {
+                <MudText Color="Color.Secondary">
+                    Aún no has guardado series en esta sesión. ¡Elige un ejercicio arriba y registra tu primera serie!
+                </MudText>
+            }
+            else
+            {
+                <MudTable Items="@seriesDeEstaSesion" Hover="true" Dense="true" Striped="true" Elevation="0">
+                    <HeaderContent>
+                        <MudTh>#</MudTh>
+                        <MudTh>Ejercicio</MudTh>
+                        <MudTh>Carga</MudTh>
+                        <MudTh>Reps</MudTh>
+                        <MudTh>RIR</MudTh>
+                        <MudTh>1RM Estimado</MudTh>
+                        <MudTh Style="text-align:right">Acción</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="#"><strong>S@(seriesDeEstaSesion.IndexOf(context) + 1)</strong></MudTd>
+                        <MudTd DataLabel="Ejercicio">@ObtenerNombreEjercicio(context.ExerciseId)</MudTd>
+                        <MudTd DataLabel="Carga"><strong>@context.Weight kg</strong></MudTd>
+                        <MudTd DataLabel="Reps">@context.ActualReps</MudTd>
+                        <MudTd DataLabel="RIR">
+                            <MudChip T="string" Size="Size.Small" Color="@(context.ActualRIR <= 2 ? Color.Success : Color.Info)">
+                                RIR @context.ActualRIR
+                            </MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="1RM Estimado"><span class="text-info fw-bold">@context.Estimated1RM kg</span></MudTd>
+                        <MudTd DataLabel="Acción" Style="text-align:right">
+                            <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline"
+                                           Color="Color.Error"
+                                           Size="Size.Small"
+                                           OnClick="@(() => EliminarSerieAsync(context))" />
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </MudCardContent>
+    </MudCard>
+}
+
+<!-- MODAL EDUCATIVO -->
+@if (mostrarModalRIR)
+{
+    <div class="modal fade show d-block" tabindex="-1" style="background-color: rgba(0,0,0,0.75); backdrop-filter: blur(4px);">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" style="background-color: #1e2126; border: 1px solid #2a2e35; border-radius: 16px;">
+                <div class="modal-header border-bottom-0 pb-0">
+                    <h4 class="modal-title fw-bold text-primary">📘 Ciencia de la Hipertrofia</h4>
+                    <button type="button" class="btn-close btn-close-white" @onclick="() => mostrarModalRIR = false"></button>
+                </div>
+                <div class="modal-body text-light">
+                    <p class="mb-4">El <strong>RIR (Repeticiones en Reserva)</strong> es la métrica de autorregulación que mide tu proximidad al fallo muscular. Es crucial para tu esquema de periodización.</p>
+
+                    <ul class="list-group list-group-flush mb-4 rounded-3 shadow-sm">
+                        <li class="list-group-item bg-dark text-light border-secondary"><strong>RIR 0:</strong> Fallo absoluto.</li>
+                        <li class="list-group-item bg-dark text-light border-secondary" style="border-left: 4px solid #3b82f6;"><strong>RIR 1-2:</strong> Zona óptima (Estímulo máximo, fatiga controlada).</li>
+                        <li class="list-group-item bg-dark text-light border-secondary"><strong>RIR 3-4:</strong> Adaptación técnica / Descarga.</li>
+                    </ul>
+
+                    <div class="p-3 rounded-3" style="background-color: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05);">
+                        <small class="text-muted d-block fw-bold mb-1">REFERENCIA CIENTÍFICA</small>
+                        <small class="text-muted" style="font-size: 0.8rem;">
+                            Schoenfeld, B. J. (2010). The mechanisms of muscle hypertrophy and their application to resistance training. <em>Journal of Strength and Conditioning Research, 24(10), 2857-2872.</em>
+                        </small>
+                    </div>
+                </div>
+                <div class="modal-footer border-top-0">
+                    <button type="button" class="btn btn-primary w-100 fw-bold" @onclick="() => mostrarModalRIR = false">Entendido</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public Guid? SessionId { get; set; }
+
+    private List<Exercise>? exercises;
+    private WorkoutSession? sesionActual;
+    private List<SetRecord> seriesDeEstaSesion = new();
+    private SetRecord? ultimoRegistroEjercicio;
+
+    private SetRecord nuevoRegistro = new SetRecord { Weight = 20, ActualReps = 8, ActualRIR = 2 };
+
+    private bool estaGuardando = false;
+    private bool mostrarModalRIR = false;
+    private bool modoGatoActivo = true;
+
+    // Timers: Memes y Cronómetro de Descanso
+    private Timer? timerMemes;
+    private Timer? timerDescanso;
+    private bool descansoActivo = false;
+    private int segundosRestantesDescanso = 0;
+    private int segundosTotalesDescanso = 180;
+
+    private int indiceImagenActual = 0;
+
+    private readonly string[] imagenesMichis = {
+        "Cat.jpg",
+        "Gato.jpg",
+        "Kitty.jpg",
+        "michi1.jpg"
+    };
+
+    private readonly string[] consejosGatos = {
+        "¿Descansando más de 3 minutos? A menos que sea sentadilla pesada, ¡muévete!",
+        "La sobrecarga progresiva se construye repetición a repetición. ¡Haz que esta serie cuente!",
+        "Controla la fase excéntrica y aprovecha el estiramiento: la ciencia y la hipertrofia están de tu lado.",
+        "Odysseus no regresó a Ítaca saltándose el día de pierna. ¡A darle a esos cuádriceps!",
+        "La técnica no es negociable. No queremos que te hernies antes de terminar de compilar en .NET 10.",
+        "Si tu último RIR fue de 5, no estás entrenando, estás acariciando las pesas."
+    };
+    private string consejoActual = "";
+
+    private Exercise? EjercicioSeleccionado =>
+        exercises?.FirstOrDefault(e => e.Id == nuevoRegistro.ExerciseId);
+
+    private record SugerenciaSobrecarga(decimal PesoSugerido, int RepsSugeridas, string Motivo);
+
+    protected override async Task OnInitializedAsync()
+    {
+        exercises = await Http.GetFromJsonAsync<List<Exercise>>("api/Exercises");
+
+        if (SessionId.HasValue)
+        {
+            nuevoRegistro.WorkoutSessionId = SessionId.Value;
+            await CargarSesionYBitacoraAsync(SessionId.Value);
+        }
+
+        consejoActual = consejosGatos[0];
+
+        timerMemes = new Timer(10000);
+        timerMemes.Elapsed += RotarMeme;
+        timerMemes.AutoReset = true;
+        timerMemes.Start();
+
+        timerDescanso = new Timer(1000);
+        timerDescanso.Elapsed += TickDescanso;
+        timerDescanso.AutoReset = true;
+    }
+
+    private async Task CargarSesionYBitacoraAsync(Guid idSesion)
+    {
+        try
+        {
+            sesionActual = await Http.GetFromJsonAsync<WorkoutSession>($"api/WorkoutSessions/{idSesion}");
+        }
+        catch { }
+
+        try
+        {
+            var registradas = await Http.GetFromJsonAsync<List<SetRecord>>($"api/SetRecords/session/{idSesion}");
+            if (registradas != null)
+            {
+                seriesDeEstaSesion = registradas;
+            }
+        }
+        catch { }
+    }
+
+    private async Task OnEjercicioCambiadoAsync(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out Guid exId))
+        {
+            nuevoRegistro.ExerciseId = exId;
+            ultimoRegistroEjercicio = null;
+
+            if (exId != Guid.Empty)
+            {
+                try
+                {
+                    var historial = await Http.GetFromJsonAsync<List<SetRecord>>($"api/SetRecords/exercise/{exId}");
+                    ultimoRegistroEjercicio = historial?.LastOrDefault();
+                    if (ultimoRegistroEjercicio != null)
+                    {
+                        var sug = CalcularSugerenciaProgresion(ultimoRegistroEjercicio, EjercicioSeleccionado?.IsCompound ?? true);
+                        nuevoRegistro.Weight = sug.PesoSugerido;
+                        nuevoRegistro.ActualReps = sug.RepsSugeridas;
+                    }
+                }
+                catch { }
+            }
+        }
+    }
+
+    private SugerenciaSobrecarga CalcularSugerenciaProgresion(SetRecord ultimo, bool esCompuesto)
+    {
+        if (ultimo.ActualRIR >= 2)
+        {
+            var incremento = esCompuesto ? 2.5m : 1.25m;
+            return new SugerenciaSobrecarga(
+                ultimo.Weight + incremento,
+                ultimo.ActualReps,
+                $"Tenías RIR {ultimo.ActualRIR}; aplica sobrecarga progresiva (+{incremento} kg)"
+            );
+        }
+        if (ultimo.ActualRIR == 1)
+        {
+            return new SugerenciaSobrecarga(
+                ultimo.Weight,
+                ultimo.ActualReps + 1,
+                "Zona óptima RIR 1; busca +1 repetición con la misma carga (Doble Progresión)"
+            );
+        }
+        return new SugerenciaSobrecarga(
+            ultimo.Weight,
+            ultimo.ActualReps,
+            "Llegaste al fallo (RIR 0); mantén carga para consolidar técnica sin saturar el SNC"
+        );
+    }
+
+    private void AplicarSugerencia(decimal peso, int reps)
+    {
+        nuevoRegistro.Weight = peso;
+        nuevoRegistro.ActualReps = reps;
+    }
+
+    private decimal Calcular1RMEnVivo()
+    {
+        if (nuevoRegistro.Weight <= 0 || nuevoRegistro.ActualReps <= 0) return 0;
+        return Math.Round(nuevoRegistro.Weight * (1m + (nuevoRegistro.ActualReps / 30m)), 2);
+    }
+
+    private void IniciarDescansoInteligente()
+    {
+        var esCompuesto = EjercicioSeleccionado?.IsCompound ?? true;
+        segundosTotalesDescanso = esCompuesto ? 180 : 90;
+        segundosRestantesDescanso = segundosTotalesDescanso;
+        descansoActivo = true;
+        timerDescanso?.Start();
+    }
+
+    private void TickDescanso(Object? source, ElapsedEventArgs e)
+    {
+        if (segundosRestantesDescanso > 0)
+        {
+            segundosRestantesDescanso--;
+            if (segundosRestantesDescanso == 0)
+            {
+                descansoActivo = false;
+                timerDescanso?.Stop();
+                InvokeAsync(() =>
+                {
+                    Snackbar.Add("🔔 ¡Tiempo de descanso terminado! A darle a la siguiente serie.", Severity.Info);
+                    StateHasChanged();
+                });
+                return;
+            }
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void AjustarDescanso(int deltaSegundos)
+    {
+        segundosRestantesDescanso = Math.Max(0, segundosRestantesDescanso + deltaSegundos);
+        if (segundosRestantesDescanso > segundosTotalesDescanso)
+        {
+            segundosTotalesDescanso = segundosRestantesDescanso;
+        }
+        if (segundosRestantesDescanso == 0)
+        {
+            DetenerDescanso();
+        }
+    }
+
+    private void DetenerDescanso()
+    {
+        descansoActivo = false;
+        segundosRestantesDescanso = 0;
+        timerDescanso?.Stop();
+    }
+
+    private string FormatearTiempo(int totalSegundos)
+    {
+        var mins = totalSegundos / 60;
+        var secs = totalSegundos % 60;
+        return $"{mins:D2}:{secs:D2}";
+    }
+
+    private void RotarMeme(Object? source, ElapsedEventArgs e)
+    {
+        indiceImagenActual = (indiceImagenActual + 1) % imagenesMichis.Length;
+        int nuevoIndiceConsejo = new Random().Next(consejosGatos.Length);
+        consejoActual = consejosGatos[nuevoIndiceConsejo];
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        timerMemes?.Stop();
+        timerMemes?.Dispose();
+        timerDescanso?.Stop();
+        timerDescanso?.Dispose();
+    }
+
+    private void ToggleModoGato()
+    {
+        modoGatoActivo = !modoGatoActivo;
+    }
+
+    private void CambiarPeso(decimal cantidad)
+    {
+        nuevoRegistro.Weight += cantidad;
+        if (nuevoRegistro.Weight < 0) nuevoRegistro.Weight = 0;
+    }
+
+    private void CambiarReps(int cantidad)
+    {
+        nuevoRegistro.ActualReps += cantidad;
+        if (nuevoRegistro.ActualReps < 0) nuevoRegistro.ActualReps = 0;
+    }
+
+    private void CambiarRIR(int cantidad)
+    {
+        nuevoRegistro.ActualRIR += cantidad;
+        if (nuevoRegistro.ActualRIR < 0) nuevoRegistro.ActualRIR = 0;
+        if (nuevoRegistro.ActualRIR > 10) nuevoRegistro.ActualRIR = 10;
+    }
+
+    private string ObtenerLinkYouTube()
+    {
+        var ejercicio = EjercicioSeleccionado;
+        if (ejercicio != null)
+        {
+            var query = Uri.EscapeDataString($"como hacer {ejercicio.Name} tecnica correcta hipertrofia");
+            return $"https://www.youtube.com/results?search_query={query}";
+        }
+        return "#";
+    }
+
+    private string ObtenerNombreEjercicio(Guid exerciseId)
+    {
+        return exercises?.FirstOrDefault(e => e.Id == exerciseId)?.Name ?? "Ejercicio";
+    }
+
+    private async Task GuardarSerie()
+    {
+        if (nuevoRegistro.ExerciseId == Guid.Empty)
+        {
+            Snackbar.Add("Selecciona un ejercicio del catálogo primero.", Severity.Warning);
+            return;
+        }
+
+        if (nuevoRegistro.ActualReps <= 0)
+        {
+            Snackbar.Add("Ingresa al menos 1 repetición lograda.", Severity.Warning);
+            return;
+        }
+
+        estaGuardando = true;
+        nuevoRegistro.Id = Guid.NewGuid();
+        nuevoRegistro.SetNumber = seriesDeEstaSesion.Count + 1;
+        nuevoRegistro.TargetReps = nuevoRegistro.ActualReps;
+        nuevoRegistro.TargetRIR = 2;
+
+        var response = await Http.PostAsJsonAsync("api/SetRecords", nuevoRegistro);
+
+        if (response.IsSuccessStatusCode)
+        {
+            var serieGuardada = await response.Content.ReadFromJsonAsync<SetRecord>();
+            if (serieGuardada != null)
+            {
+                seriesDeEstaSesion.Add(serieGuardada);
+                ultimoRegistroEjercicio = serieGuardada;
+            }
+
+            Snackbar.Add($"¡Serie #{nuevoRegistro.SetNumber} guardada! (1RM: {Calcular1RMEnVivo()} kg)", Severity.Success);
+            IniciarDescansoInteligente();
+        }
+        else
+        {
+            Snackbar.Add("Error al guardar la serie.", Severity.Error);
+        }
+
+        estaGuardando = false;
+    }
+
+    private async Task EliminarSerieAsync(SetRecord serie)
+    {
+        var response = await Http.DeleteAsync($"api/SetRecords/{serie.Id}");
+        if (response.IsSuccessStatusCode)
+        {
+            seriesDeEstaSesion.Remove(serie);
+            Snackbar.Add("Serie eliminada de la bitácora.", Severity.Info);
+        }
+        else
+        {
+            Snackbar.Add("No se pudo eliminar la serie.", Severity.Error);
+        }
+    }
+
+    private async Task FinalizarSesionActualAsync()
+    {
+        if (sesionActual == null) return;
+        sesionActual.CompletedDate = DateTime.UtcNow;
+        var response = await Http.PutAsJsonAsync($"api/WorkoutSessions/{sesionActual.Id}", sesionActual);
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add($"¡Sesión '{sesionActual.Name}' marcada como completada!", Severity.Success);
+        }
+    }
+}

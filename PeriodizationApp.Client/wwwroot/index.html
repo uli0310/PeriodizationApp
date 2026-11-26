@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="es" data-bs-theme="dark">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Odysseus - PeriodizationApp</title>
+    <link href="manifest.json" rel="manifest" />
+    <base href="/" />
+
+    <!-- 1. Google Fonts (Tipografía Premium + Roboto para MudBlazor) -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" rel="stylesheet" />
+
+    <link rel="preload" id="webassembly" />
+
+    <!-- 2. Bootstrap Base y MudBlazor CSS -->
+    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link href="_content/MudBlazor/MudBlazor.min.css" rel="stylesheet" />
+
+    <!-- 3. Nuestro CSS Premium con Cache-Busting (?v=2) -->
+    <link rel="stylesheet" href="css/app.css?v=2" />
+
+    <!-- 4. Estilos aislados de Blazor -->
+    <link href="PeriodizationApp.Client.styles.css" rel="stylesheet" />
+
+    <link rel="icon" type="image/png" href="odysseus-logo.png" />
+    <script type="importmap"></script>
+</head>
+<body>
+    <div id="app">
+        <svg class="loading-progress">
+            <circle r="40%" cx="50%" cy="50%" />
+            <circle r="40%" cx="50%" cy="50%" />
+        </svg>
+        <div class="loading-progress-text"></div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="." class="reload">Reload</a>
+        <span class="dismiss">🗙</span>
+    </div>
+
+    <script src="_framework/blazor.webassembly#[.{fingerprint}].js"></script>
+    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+    <script src="_content/Blazor-ApexCharts/js/apex-charts.min.js"></script>
+    <script src="_content/Blazor-ApexCharts/js/blazor-apex-charts.js"></script>
+
+    <script>
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker.register('service-worker.js');
+                }
+    </script>
+</body>
+</html>

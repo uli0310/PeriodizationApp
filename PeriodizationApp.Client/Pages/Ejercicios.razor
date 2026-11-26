@@ -1,0 +1,330 @@
+﻿@page "/ejercicios"
+@using PeriodizationApp.Core.Entities
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Catálogo de Ejercicios - Odysseus</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <MudText Typo="Typo.h4" Class="fw-bold">Catálogo Biomecánico de Ejercicios</MudText>
+        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">
+            Filtra por grupo muscular, patrón multiarticular/aislamiento o agrega nuevos ejercicios a tu arsenal
+        </MudText>
+    </div>
+    <MudButton Variant="Variant.Filled"
+               Color="Color.Primary"
+               StartIcon="@(mostrarFormularioNuevo ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.Add)"
+               OnClick="@(() => mostrarFormularioNuevo = !mostrarFormularioNuevo)">
+        @(mostrarFormularioNuevo ? "Ocultar Formulario" : "Nuevo Ejercicio")
+    </MudButton>
+</div>
+<MudDivider Class="mb-4" />
+
+@if (exercises == null)
+{
+    <div class="d-flex align-items-center gap-3 my-5">
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        <MudText><em>Cargando base de datos de ejercicios...</em></MudText>
+    </div>
+}
+else
+{
+    <!-- TARJETAS DE MÉTRICAS RÁPIDAS DEL CATÁLOGO -->
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="4">
+            <MudPaper Elevation="2" Class="pa-4 d-flex align-items-center justify-content-between" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 14px;">
+                <div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">TOTAL EN CATÁLOGO</MudText>
+                    <MudText Typo="Typo.h4" Color="Color.Primary" Class="fw-bold">@exercises.Count</MudText>
+                </div>
+                <MudIcon Icon="@Icons.Material.Filled.FitnessCenter" Color="Color.Primary" Size="Size.Large" />
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Elevation="2" Class="pa-4 d-flex align-items-center justify-content-between" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 14px;">
+                <div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">COMPUESTOS (MULTIARTICULARES)</MudText>
+                    <MudText Typo="Typo.h4" Color="Color.Success" Class="fw-bold">@exercises.Count(e => e.IsCompound)</MudText>
+                </div>
+                <MudIcon Icon="@Icons.Material.Filled.Bolt" Color="Color.Success" Size="Size.Large" />
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Elevation="2" Class="pa-4 d-flex align-items-center justify-content-between" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 14px;">
+                <div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">AISLAMIENTO (MONOARTICULARES)</MudText>
+                    <MudText Typo="Typo.h4" Color="Color.Info" Class="fw-bold">@exercises.Count(e => !e.IsCompound)</MudText>
+                </div>
+                <MudIcon Icon="@Icons.Material.Filled.TrackChanges" Color="Color.Info" Size="Size.Large" />
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <!-- FORMULARIO DESPLEGABLE PARA CREAR NUEVO EJERCICIO -->
+    @if (mostrarFormularioNuevo)
+    {
+        <MudCard Elevation="4" Class="mb-5 pa-3" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 16px;">
+            <MudCardContent>
+                <MudText Typo="Typo.h6" Color="Color.Primary" Class="fw-bold mb-3">
+                    Agregar Nuevo Ejercicio Personalizado
+                </MudText>
+                <MudGrid Class="align-items-center">
+                    <MudItem xs="12" md="4">
+                        <MudTextField T="string"
+                                      @bind-Value="nuevoEjercicio.Name"
+                                      Label="Nombre del Ejercicio"
+                                      Placeholder="Ej. Sentadilla Frontal con Barra"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="12" md="4">
+                        <MudTextField T="string"
+                                      @bind-Value="nuevoEjercicio.MuscleGroup"
+                                      Label="Grupos Musculares que trabaja"
+                                      Placeholder="Ej. Cuádriceps/Glúteo/Core"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense" />
+                    </MudItem>
+                    <MudItem xs="12" md="2">
+                        <MudSwitch T="bool"
+                                   @bind-Value="nuevoEjercicio.IsCompound"
+                                   Color="Color.Success"
+                                   Label="@(nuevoEjercicio.IsCompound ? "Compuesto" : "Aislamiento")" />
+                    </MudItem>
+                    <MudItem xs="12" md="2">
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Success"
+                                   FullWidth="true"
+                                   StartIcon="@Icons.Material.Filled.Save"
+                                   Disabled="@guardandoEjercicio"
+                                   OnClick="GuardarNuevoEjercicioAsync">
+                            Guardar
+                        </MudButton>
+                    </MudItem>
+                </MudGrid>
+            </MudCardContent>
+        </MudCard>
+    }
+
+    <!-- PANEL DE FILTROS INTERACTIVOS -->
+    <MudCard Elevation="3" Class="mb-4 pa-3" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border-radius: 16px;">
+        <MudCardContent>
+            <MudGrid Class="align-items-center">
+                <MudItem xs="12" md="6">
+                    <MudTextField T="string"
+                                  @bind-Value="textoBusqueda"
+                                  Immediate="true"
+                                  Placeholder="Buscar por ejercicio o músculo (ej. Press, Dominadas, Glúteo, Tríceps)..."
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Search"
+                                  Clearable="true" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudSelect T="string"
+                               @bind-Value="filtroTipo"
+                               Label="Tipo de movimiento"
+                               Variant="Variant.Outlined"
+                               Margin="Margin.Dense">
+                        <MudSelectItem T="string" Value="@("Todos")">Todos (Compuestos + Aislamiento)</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("Compuestos")">Solo Compuestos (Multiarticulares)</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("Aislamiento")">Solo Aislamiento (Monoarticulares)</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+            </MudGrid>
+
+            <div class="mt-3">
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-1">Filtrar por grupo muscular:</MudText>
+                <MudChipSet T="string" @bind-SelectedValue="categoriaSeleccionada" SelectionMode="SelectionMode.SingleSelection" CheckMark="true">
+                    @foreach (var cat in categoriasMusculares)
+                    {
+                        <MudChip T="string" Value="@cat" Color="Color.Primary" Variant="Variant.Text">@cat</MudChip>
+                    }
+                </MudChipSet>
+            </div>
+        </MudCardContent>
+    </MudCard>
+
+    <!-- TABLA MUDBLAZOR DE EJERCICIOS -->
+    <MudTable Items="@EjerciciosFiltrados"
+              Hover="true"
+              Striped="true"
+              Dense="false"
+              Elevation="3"
+              Style="border-radius: 16px; overflow: hidden;">
+        <HeaderContent>
+            <MudTh><MudTableSortLabel SortBy="new Func<Exercise, object>(x => x.Name)">Nombre del Ejercicio</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<Exercise, object>(x => x.MuscleGroup)">Grupos Musculares Implicados</MudTableSortLabel></MudTh>
+            <MudTh><MudTableSortLabel SortBy="new Func<Exercise, object>(x => x.IsCompound)">Clasificación</MudTableSortLabel></MudTh>
+            <MudTh Style="text-align:right">Técnica</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Nombre del Ejercicio">
+                <MudText Typo="Typo.body1" Class="fw-bold">@context.Name</MudText>
+            </MudTd>
+            <MudTd DataLabel="Grupos Musculares Implicados">
+                <div class="d-flex flex-wrap gap-1">
+                    @foreach (var musculo in context.MuscleGroup.Split('/', StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default">
+                            @musculo.Trim()
+                        </MudChip>
+                    }
+                </div>
+            </MudTd>
+            <MudTd DataLabel="Clasificación">
+                @if (context.IsCompound)
+                {
+                    <MudChip T="string" Color="Color.Success" Size="Size.Small" Icon="@Icons.Material.Filled.Bolt">
+                        Compuesto
+                    </MudChip>
+                }
+                else
+                {
+                    <MudChip T="string" Color="Color.Info" Size="Size.Small" Icon="@Icons.Material.Filled.TrackChanges">
+                        Aislamiento
+                    </MudChip>
+                }
+            </MudTd>
+            <MudTd DataLabel="Técnica" Style="text-align:right">
+                <MudIconButton Icon="@Icons.Material.Filled.OndemandVideo"
+                               Color="Color.Error"
+                               Size="Size.Small"
+                               title="Ver técnica en YouTube"
+                               Href="@ObtenerLinkYouTube(context.Name)"
+                               Target="_blank" />
+            </MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            <MudText Class="pa-4" Color="Color.Secondary">
+                No se encontraron ejercicios con los filtros seleccionados.
+            </MudText>
+        </NoRecordsContent>
+        <PagerContent>
+            <MudTablePager PageSizeOptions="new int[] { 15, 30, 60 }" RowsPerPageString="Ejercicios por página:" />
+        </PagerContent>
+    </MudTable>
+}
+
+@code {
+    private List<Exercise>? exercises;
+
+    private string textoBusqueda = string.Empty;
+    private string categoriaSeleccionada = "Todos";
+    private string filtroTipo = "Todos";
+
+    private bool mostrarFormularioNuevo = false;
+    private bool guardandoEjercicio = false;
+    private Exercise nuevoEjercicio = new Exercise { Name = string.Empty, MuscleGroup = string.Empty, IsCompound = true };
+
+    private readonly string[] categoriasMusculares = new[]
+    {
+        "Todos",
+        "Pecho",
+        "Espalda",
+        "Pierna (Cuádriceps/Glúteo/Isquios/Pantorrilla)",
+        "Hombro",
+        "Bíceps",
+        "Tríceps"
+    };
+
+    private IEnumerable<Exercise> EjerciciosFiltrados =>
+        (exercises ?? Enumerable.Empty<Exercise>())
+        .Where(CumpleFiltroCategoria)
+        .Where(CumpleFiltroTipo)
+        .Where(CumpleBusquedaTexto)
+        .OrderBy(e => e.Name);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarEjerciciosAsync();
+    }
+
+    private async Task CargarEjerciciosAsync()
+    {
+        try
+        {
+            exercises = await Http.GetFromJsonAsync<List<Exercise>>("api/Exercises");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error al conectar con la API: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private bool CumpleFiltroCategoria(Exercise ex)
+    {
+        if (string.IsNullOrWhiteSpace(categoriaSeleccionada) || categoriaSeleccionada == "Todos")
+            return true;
+
+        if (categoriaSeleccionada.StartsWith("Pierna"))
+        {
+            return ex.MuscleGroup.Contains("Cuádriceps", StringComparison.OrdinalIgnoreCase)
+                || ex.MuscleGroup.Contains("Glúteo", StringComparison.OrdinalIgnoreCase)
+                || ex.MuscleGroup.Contains("Isquiotibiales", StringComparison.OrdinalIgnoreCase)
+                || ex.MuscleGroup.Contains("Pantorrilla", StringComparison.OrdinalIgnoreCase)
+                || ex.MuscleGroup.Contains("Pierna", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return ex.MuscleGroup.Contains(categoriaSeleccionada, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool CumpleFiltroTipo(Exercise ex) => filtroTipo switch
+    {
+        "Compuestos" => ex.IsCompound,
+        "Aislamiento" => !ex.IsCompound,
+        _ => true
+    };
+
+    private bool CumpleBusquedaTexto(Exercise ex)
+    {
+        if (string.IsNullOrWhiteSpace(textoBusqueda))
+            return true;
+
+        return ex.Name.Contains(textoBusqueda, StringComparison.OrdinalIgnoreCase)
+            || ex.MuscleGroup.Contains(textoBusqueda, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string ObtenerLinkYouTube(string nombreEjercicio)
+    {
+        var query = Uri.EscapeDataString($"como hacer {nombreEjercicio} tecnica correcta hipertrofia");
+        return $"https://www.youtube.com/results?search_query={query}";
+    }
+
+    private async Task GuardarNuevoEjercicioAsync()
+    {
+        if (string.IsNullOrWhiteSpace(nuevoEjercicio.Name) || string.IsNullOrWhiteSpace(nuevoEjercicio.MuscleGroup))
+        {
+            Snackbar.Add("Completa el nombre y los grupos musculares del ejercicio.", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            guardandoEjercicio = true;
+            nuevoEjercicio.Id = Guid.NewGuid();
+            var response = await Http.PostAsJsonAsync("api/Exercises", nuevoEjercicio);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add($"Ejercicio '{nuevoEjercicio.Name}' agregado al catálogo.", Severity.Success);
+                nuevoEjercicio = new Exercise { Name = string.Empty, MuscleGroup = string.Empty, IsCompound = true };
+                mostrarFormularioNuevo = false;
+                await CargarEjerciciosAsync();
+            }
+            else
+            {
+                Snackbar.Add("No se pudo guardar el ejercicio.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error al guardar: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            guardandoEjercicio = false;
+        }
+    }
+}

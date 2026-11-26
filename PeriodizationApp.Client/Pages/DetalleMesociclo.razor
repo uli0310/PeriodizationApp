@@ -1,0 +1,328 @@
+﻿@page "/mesociclo/{MesoId:guid}"
+@page "/mesociclos/{MesoId:guid}"
+@using PeriodizationApp.Core.Entities
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+
+<PageTitle>Detalle del Mesociclo - Odysseus</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <div class="d-flex align-items-center gap-2">
+            <MudIcon Icon="@Icons.Material.Filled.CalendarViewWeek" Color="Color.Primary" Size="Size.Large" />
+            <MudText Typo="Typo.h4" Class="fw-bold">
+                @(mesocycle != null ? mesocycle.Name : "Sesiones del Mesociclo")
+            </MudText>
+        </div>
+        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">
+            Gestiona tus sesiones programadas, evalúa tu disposición diaria (Readiness) y registra tus series
+        </MudText>
+    </div>
+
+    <div class="d-flex gap-2">
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   StartIcon="@(mostrarFormularioSesion ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.Add)"
+                   OnClick="@(() => mostrarFormularioSesion = !mostrarFormularioSesion)">
+            @(mostrarFormularioSesion ? "Ocultar Formulario" : "Nueva Sesión")
+        </MudButton>
+        <MudButton Variant="Variant.Outlined"
+                   Color="Color.Info"
+                   StartIcon="@Icons.Material.Filled.EditNote"
+                   Href="/registrar">
+            Serie Libre
+        </MudButton>
+        <MudButton Variant="Variant.Outlined"
+                   Color="Color.Default"
+                   StartIcon="@Icons.Material.Filled.ArrowBack"
+                   Href="/">
+            Panel Principal
+        </MudButton>
+    </div>
+</div>
+<MudDivider Class="mb-4" />
+
+@if (sessions != null)
+{
+    <!-- RESUMEN DEL MESOCICLO -->
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="4">
+            <MudPaper Elevation="2" Class="pa-4 d-flex align-items-center justify-content-between" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 14px;">
+                <div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">SESIONES PROGRAMADAS</MudText>
+                    <MudText Typo="Typo.h4" Color="Color.Primary" Class="fw-bold">@sessions.Count</MudText>
+                </div>
+                <MudIcon Icon="@Icons.Material.Filled.EventNote" Color="Color.Primary" Size="Size.Large" />
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Elevation="2" Class="pa-4 d-flex align-items-center justify-content-between" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 14px;">
+                <div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">SESIONES COMPLETADAS</MudText>
+                    <MudText Typo="Typo.h4" Color="Color.Success" Class="fw-bold">@sessions.Count(s => s.CompletedDate.HasValue)</MudText>
+                </div>
+                <MudIcon Icon="@Icons.Material.Filled.TaskAlt" Color="Color.Success" Size="Size.Large" />
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="4">
+            <MudPaper Elevation="2" Class="pa-4 d-flex align-items-center justify-content-between" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 14px;">
+                <div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">READINESS PROMEDIO</MudText>
+                    <MudText Typo="Typo.h4" Color="Color.Warning" Class="fw-bold">
+                        @(sessions.Any() ? $"{Math.Round(sessions.Average(s => s.ReadinessScore > 0 ? s.ReadinessScore : 8), 1)} / 10" : "8 / 10")
+                    </MudText>
+                </div>
+                <MudIcon Icon="@Icons.Material.Filled.BatteryChargingFull" Color="Color.Warning" Size="Size.Large" />
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+<!-- FORMULARIO PARA AGREGAR NUEVA SESIÓN -->
+@if (mostrarFormularioSesion)
+{
+    <MudCard Elevation="4" Class="mb-5 pa-4" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border: 1px solid rgba(59, 130, 246, 0.35); border-radius: 16px;">
+        <MudCardContent>
+            <MudText Typo="Typo.h6" Color="Color.Primary" Class="fw-bold mb-3">
+                Programar Nueva Sesión en este Mesociclo
+            </MudText>
+            <MudGrid Class="align-items-center">
+                <MudItem xs="12" md="4">
+                    <MudTextField T="string"
+                                  @bind-Value="nombreNuevaSesion"
+                                  Label="Nombre de la Sesión"
+                                  Placeholder="Ej. Día 1: Upper Body A (Fuerza)"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudDatePicker @bind-Date="fechaNuevaSesion"
+                                   Label="Fecha Programada"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudNumericField T="int"
+                                     @bind-Value="readinessNuevaSesion"
+                                     Label="Disposición Esperada (1-10)"
+                                     Min="1"
+                                     Max="10"
+                                     Variant="Variant.Outlined"
+                                     Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" md="2">
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Success"
+                               FullWidth="true"
+                               StartIcon="@Icons.Material.Filled.Save"
+                               Disabled="@guardandoSesion"
+                               OnClick="CrearNuevaSesionAsync">
+                        Guardar
+                    </MudButton>
+                </MudItem>
+            </MudGrid>
+        </MudCardContent>
+    </MudCard>
+}
+
+@if (sessions == null)
+{
+    <div class="d-flex align-items-center gap-3 my-5">
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+        <MudText><em>Cargando sesiones de entrenamiento...</em></MudText>
+    </div>
+}
+else if (sessions.Count == 0)
+{
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="my-4">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <span>Aún no hay sesiones creadas para este mesociclo. Usa el botón <strong>"Nueva Sesión"</strong> arriba para programar tu semana.</span>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" OnClick="@(() => mostrarFormularioSesion = true)">
+                Crear Primera Sesión
+            </MudButton>
+        </div>
+    </MudAlert>
+}
+else
+{
+    <MudGrid>
+        @foreach (var session in sessions)
+        {
+            var completada = session.CompletedDate.HasValue;
+            var readiness = session.ReadinessScore > 0 ? session.ReadinessScore : 8;
+
+            <MudItem xs="12" md="4">
+                <MudCard Elevation="3" Class="h-100 d-flex flex-column justify-content-between" Style="@($"background: linear-gradient(145deg, #1c1f26, #15171c); border-left: 4px solid {(completada ? "#10b981" : "#3b82f6")}; border-radius: 16px;")">
+                    <MudCardContent>
+                        <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                            <MudText Typo="Typo.h6" Class="fw-bold">@session.Name</MudText>
+                            <div class="d-flex align-items-center gap-1">
+                                <MudChip T="string"
+                                         Size="Size.Small"
+                                         Color="@(completada ? Color.Success : Color.Info)"
+                                         OnClick="@(() => ToggleCompletadaAsync(session))"
+                                         Style="cursor: pointer;">
+                                    @(completada ? "✓ Completada" : "⏳ Pendiente")
+                                </MudChip>
+                                <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline"
+                                               Color="Color.Error"
+                                               Size="Size.Small"
+                                               OnClick="@(() => EliminarSesionAsync(session.Id))" />
+                            </div>
+                        </div>
+
+                        <div class="d-flex align-items-center gap-2 mb-3">
+                            <MudIcon Icon="@Icons.Material.Filled.CalendarToday" Size="Size.Small" Color="Color.Secondary" />
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                Programada: <strong>@session.ScheduledDate.ToLocalTime().ToString("dd/MM/yyyy")</strong>
+                            </MudText>
+                        </div>
+
+                        @if (completada && session.CompletedDate.HasValue)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Success" Class="d-block mb-2">
+                                Finalizada el @session.CompletedDate.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                            </MudText>
+                        }
+
+                        <div class="d-flex flex-wrap gap-2 mt-2">
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@(readiness >= 7 ? Color.Success : Color.Warning)">
+                                ⚡ Readiness: @readiness/10
+                            </MudChip>
+                            @if (session.SessionRPE > 0)
+                            {
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info">
+                                    🔥 RPE Sesión: @session.SessionRPE/10
+                                </MudChip>
+                            }
+                        </div>
+                    </MudCardContent>
+
+                    <MudCardActions Class="px-4 pb-4 pt-0">
+                        <MudButton Variant="Variant.Filled"
+                                   Color="@(completada ? Color.Success : Color.Primary)"
+                                   FullWidth="true"
+                                   StartIcon="@Icons.Material.Filled.FitnessCenter"
+                                   Href="@($"/registrar/{session.Id}")">
+                            @(completada ? "Ver / Agregar Series" : "Entrenar y Registrar Series")
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    [Parameter]
+    public Guid MesoId { get; set; }
+
+    private Mesocycle? mesocycle;
+    private List<WorkoutSession>? sessions;
+
+    private bool mostrarFormularioSesion = false;
+    private bool guardandoSesion = false;
+    private string nombreNuevaSesion = string.Empty;
+    private DateTime? fechaNuevaSesion = DateTime.Today;
+    private int readinessNuevaSesion = 8;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarDatosAsync();
+    }
+
+    private async Task CargarDatosAsync()
+    {
+        try
+        {
+            try
+            {
+                mesocycle = await Http.GetFromJsonAsync<Mesocycle>($"api/Mesocycle/{MesoId}");
+            }
+            catch
+            {
+                // Si el mesociclo no se encuentra individualmente, continuamos cargando sus sesiones
+            }
+
+            sessions = await Http.GetFromJsonAsync<List<WorkoutSession>>($"api/WorkoutSessions/mesocycle/{MesoId}");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error al conectar con la API: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task CrearNuevaSesionAsync()
+    {
+        if (string.IsNullOrWhiteSpace(nombreNuevaSesion))
+        {
+            Snackbar.Add("Ingresa un nombre para la sesión de entrenamiento.", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            guardandoSesion = true;
+            var fechaUtc = (fechaNuevaSesion ?? DateTime.Today).ToUniversalTime();
+
+            var nueva = new WorkoutSession
+            {
+                Id = Guid.NewGuid(),
+                MesocycleId = MesoId,
+                Name = nombreNuevaSesion.Trim(),
+                ScheduledDate = fechaUtc,
+                ReadinessScore = Math.Clamp(readinessNuevaSesion, 1, 10),
+                SessionRPE = 8
+            };
+
+            var response = await Http.PostAsJsonAsync("api/WorkoutSessions", nueva);
+            if (response.IsSuccessStatusCode)
+            {
+                Snackbar.Add($"Sesión '{nueva.Name}' programada.", Severity.Success);
+                nombreNuevaSesion = string.Empty;
+                mostrarFormularioSesion = false;
+                await CargarDatosAsync();
+            }
+            else
+            {
+                Snackbar.Add("No se pudo crear la sesión.", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            guardandoSesion = false;
+        }
+    }
+
+    private async Task ToggleCompletadaAsync(WorkoutSession session)
+    {
+        session.CompletedDate = session.CompletedDate.HasValue ? null : DateTime.UtcNow;
+        var response = await Http.PutAsJsonAsync($"api/WorkoutSessions/{session.Id}", session);
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add(session.CompletedDate.HasValue ? "¡Sesión marcada como completada!" : "Sesión marcada como pendiente.", Severity.Success);
+        }
+        else
+        {
+            Snackbar.Add("No se pudo actualizar el estado de la sesión.", Severity.Error);
+        }
+    }
+
+    private async Task EliminarSesionAsync(Guid id)
+    {
+        var response = await Http.DeleteAsync($"api/WorkoutSessions/{id}");
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Sesión eliminada.", Severity.Info);
+            await CargarDatosAsync();
+        }
+        else
+        {
+            Snackbar.Add("No se pudo eliminar la sesión.", Severity.Error);
+        }
+    }
+}

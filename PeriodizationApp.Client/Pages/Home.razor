@@ -1,0 +1,525 @@
+﻿@page "/"
+@using PeriodizationApp.Core.Entities
+@inject HttpClient Http
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>Odysseus - Mis Mesociclos</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+        <MudText Typo="Typo.h4" Class="fw-bold">Panel de Entrenamiento</MudText>
+        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Planificación inteligente y gestión de fatiga</MudText>
+    </div>
+    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.FitnessCenter" Href="/registrar">
+        Registrar Serie Rápida
+    </MudButton>
+</div>
+<MudDivider Class="mb-6" />
+
+<!-- =========================================================
+     SECCIÓN 1: RECOMENDADOR INTERACTIVO DE RUTINAS (MUDBLAZOR)
+     ========================================================= -->
+<MudCard Elevation="4" Class="mb-6 pa-4" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 16px;">
+    <MudCardHeader>
+        <CardHeaderContent>
+            <div class="d-flex align-items-center gap-2">
+                <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Color="Color.Primary" />
+                <MudText Typo="Typo.h5" Class="fw-bold">Recomendador de Rutinas (Control de Fatiga y SNC)</MudText>
+            </div>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
+                Selecciona cuántos días a la semana puedes entrenar para obtener la distribución óptima de frecuencia, volumen y recuperación.
+            </MudText>
+        </CardHeaderContent>
+    </MudCardHeader>
+
+    <MudCardContent>
+        <MudGrid Class="align-items-center">
+            <MudItem xs="12" md="5">
+                <MudSelect T="int"
+                           Label="Días disponibles por semana"
+                           Value="diasSeleccionados"
+                           ValueChanged="OnDiasChanged"
+                           Variant="Variant.Outlined"
+                           AdornmentIcon="@Icons.Material.Filled.CalendarMonth"
+                           AdornmentColor="Color.Primary">
+                    <MudSelectItem T="int" Value="2">2 días / semana (Alta recuperación)</MudSelectItem>
+                    <MudSelectItem T="int" Value="3">3 días / semana (Frecuencia balanceada)</MudSelectItem>
+                    <MudSelectItem T="int" Value="4">4 días / semana (Óptimo Fuerza/Hipertrofia)</MudSelectItem>
+                    <MudSelectItem T="int" Value="5">5 días / semana (Volumen avanzado)</MudSelectItem>
+                    <MudSelectItem T="int" Value="6">6 días / semana (Alta frecuencia)</MudSelectItem>
+                </MudSelect>
+
+                <div class="mt-3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-1">Selección rápida:</MudText>
+                    <MudChipSet T="int" SelectedValue="diasSeleccionados" SelectedValueChanged="OnDiasChanged" SelectionMode="SelectionMode.SingleSelection" CheckMark="true">
+                        @for (int d = 2; d <= 6; d++)
+                        {
+                            var dia = d;
+                            <MudChip T="int" Value="@dia" Color="Color.Primary" Variant="Variant.Text">@($"{dia} Días")</MudChip>
+                        }
+                    </MudChipSet>
+                </div>
+            </MudItem>
+
+            <MudItem xs="12" md="7">
+                @{
+                    var plan = ObtenerRecomendacion(diasSeleccionados);
+                }
+                <MudCard Outlined="true" Class="pa-3" Style="background-color: rgba(59, 130, 246, 0.06); border-color: rgba(59, 130, 246, 0.3); border-radius: 12px;">
+                    <MudCardContent>
+                        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+                            <div>
+                                <MudText Typo="Typo.overline" Color="Color.Info">ESQUEMA RECOMENDADO (@diasSeleccionados DÍAS)</MudText>
+                                <MudText Typo="Typo.h5" Color="Color.Primary" Class="fw-bold">@plan.NombreSplit</MudText>
+                            </div>
+                            <MudChip T="string" Color="@plan.ColorFatiga" Size="Size.Small" Icon="@Icons.Material.Filled.Bolt">
+                                @plan.EtiquetaFatiga
+                            </MudChip>
+                        </div>
+
+                        <MudText Typo="Typo.body1" Class="mb-3">
+                            @plan.Descripcion
+                        </MudText>
+
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-2 fw-bold">
+                            DISTRIBUCIÓN SEMANAL DE SESIONES:
+                        </MudText>
+                        <div class="d-flex flex-wrap gap-2 mb-4">
+                            @foreach (var sesion in plan.Sesiones)
+                            {
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info" Icon="@Icons.Material.Filled.EventAvailable">
+                                    @sesion
+                                </MudChip>
+                            }
+                        </div>
+
+                        <MudGrid Class="align-items-center mt-2">
+                            <MudItem xs="12" sm="7">
+                                <MudTextField T="string"
+                                              @bind-Value="nombreNuevoMesociclo"
+                                              Label="Nombre del nuevo mesociclo"
+                                              Variant="Variant.Outlined"
+                                              Margin="Margin.Dense" />
+                            </MudItem>
+                            <MudItem xs="12" sm="5">
+                                <MudButton Variant="Variant.Filled"
+                                           Color="Color.Primary"
+                                           FullWidth="true"
+                                           StartIcon="@Icons.Material.Filled.PlaylistAddCheck"
+                                           Disabled="@creandoMesociclo"
+                                           OnClick="AplicarPlanRecomendado">
+                                    @(creandoMesociclo ? "Creando Plan..." : "Seleccionar / Aplicar este plan")
+                                </MudButton>
+                            </MudItem>
+                        </MudGrid>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+    </MudCardContent>
+</MudCard>
+
+<!-- =========================================================
+     SECCIÓN 2: MIS MESOCICLOS (GESTIÓN COMPLETA CRUD + PROGRESO)
+     ========================================================= -->
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <MudText Typo="Typo.h5" Class="fw-bold">Mis Mesociclos</MudText>
+    @if (mesocycles != null)
+    {
+        <MudChip T="string" Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Small">
+            @($"{mesocycles.Count} mesociclo(s)")
+        </MudChip>
+    }
+</div>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Class="mb-4">
+        <strong>Error al conectar con la API:</strong> @errorMessage
+    </MudAlert>
+}
+else if (mesocycles == null)
+{
+    <div class="d-flex align-items-center gap-3 my-4">
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" Size="Size.Small" />
+        <MudText><em>Cargando tu planificación... conectando con la API...</em></MudText>
+    </div>
+}
+else if (mesocycles.Count == 0)
+{
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+        No tienes mesociclos activos. ¡Selecciona un esquema en el recomendador superior y pulsa <strong>"Seleccionar / Aplicar este plan"</strong>!
+    </MudAlert>
+}
+else
+{
+    <MudGrid>
+        @foreach (var meso in mesocycles)
+        {
+            var infoBloque = CalcularProgresoBloque(meso);
+            var estaEditandoEste = mesocicloEditandoId == meso.Id;
+            var confirmandoBorrarEste = mesocicloConfirmarEliminarId == meso.Id;
+
+            <MudItem xs="12" md="6">
+                <MudCard Elevation="3" Class="h-100 d-flex flex-column justify-content-between" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 16px;">
+                    <MudCardContent>
+                        <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                            @if (estaEditandoEste)
+                            {
+                                <MudTextField T="string"
+                                              @bind-Value="nombreEditando"
+                                              Label="Renombrar mesociclo"
+                                              Variant="Variant.Outlined"
+                                              Margin="Margin.Dense"
+                                              Class="flex-grow-1" />
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.h6" Color="Color.Primary" Class="fw-bold">@meso.Name</MudText>
+                            }
+
+                            <div class="d-flex align-items-center gap-1">
+                                <MudChip T="string"
+                                         Color="@(meso.IsActive ? Color.Success : Color.Default)"
+                                         Size="Size.Small"
+                                         OnClick="@(() => CambiarEstadoActivoAsync(meso))"
+                                         Style="cursor: pointer;">
+                                    @(meso.IsActive ? "● Activo" : "○ Programado")
+                                </MudChip>
+
+                                @if (estaEditandoEste)
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Check"
+                                                   Color="Color.Success"
+                                                   Size="Size.Small"
+                                                   OnClick="@(() => GuardarEdicionMesocicloAsync(meso))" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Close"
+                                                   Color="Color.Default"
+                                                   Size="Size.Small"
+                                                   OnClick="CancelarEdicion" />
+                                }
+                                else
+                                {
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit"
+                                                   Color="Color.Info"
+                                                   Size="Size.Small"
+                                                   OnClick="@(() => IniciarEdicion(meso))" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.DeleteOutline"
+                                                   Color="Color.Error"
+                                                   Size="Size.Small"
+                                                   OnClick="@(() => mesocicloConfirmarEliminarId = meso.Id)" />
+                                }
+                            </div>
+                        </div>
+
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">
+                            <strong>Inicio:</strong> @meso.StartDate.ToLocalTime().ToString("dd/MM/yyyy") &nbsp;|&nbsp;
+                            <strong>Fin:</strong> @meso.EndDate.ToLocalTime().ToString("dd/MM/yyyy")
+                        </MudText>
+
+                        <!-- Barra de progreso de Periodización (Semanas y Fase) -->
+                        <div class="p-3 rounded-3 mb-2" style="background-color: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06);">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                                <MudText Typo="Typo.caption" Class="fw-bold">
+                                    Semana @infoBloque.SemanaActual de @infoBloque.TotalSemanas
+                                </MudText>
+                                <MudChip T="string" Size="Size.Small" Color="@infoBloque.ColorFase" Variant="Variant.Text">
+                                    @infoBloque.NombreFase
+                                </MudChip>
+                            </div>
+                            <MudProgressLinear Color="@infoBloque.ColorFase"
+                                               Value="@infoBloque.Porcentaje"
+                                               Rounded="true"
+                                               Size="Size.Medium" />
+                        </div>
+
+                        @if (confirmandoBorrarEste)
+                        {
+                            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true" Class="mt-3">
+                                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                                    <span>¿Eliminar este mesociclo y sus sesiones?</span>
+                                    <div class="d-flex gap-1">
+                                        <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Error" OnClick="@(() => EliminarMesocicloAsync(meso.Id))">
+                                            Sí, Eliminar
+                                        </MudButton>
+                                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Default" OnClick="@(() => mesocicloConfirmarEliminarId = null)">
+                                            Cancelar
+                                        </MudButton>
+                                    </div>
+                                </div>
+                            </MudAlert>
+                        }
+                    </MudCardContent>
+
+                    <MudCardActions Class="px-4 pb-4 pt-0 d-flex gap-2">
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.CalendarViewWeek"
+                                   Href="@($"/mesociclo/{meso.Id}")"
+                                   FullWidth="true">
+                            Ver Sesiones
+                        </MudButton>
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Info"
+                                   StartIcon="@Icons.Material.Filled.EditNote"
+                                   Href="/registrar"
+                                   FullWidth="true">
+                            Registrar Series
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private List<Mesocycle>? mesocycles;
+    private string? errorMessage;
+
+    // ID real de usuario en la base de datos PostgreSQL
+    private readonly Guid myUserId = Guid.Parse("01a16050-b677-7a66-8e94-f01f9e256cfc");
+
+    private int diasSeleccionados = 4;
+    private string nombreNuevoMesociclo = "Mesociclo Upper / Lower (4 Días)";
+    private bool creandoMesociclo = false;
+
+    // Estado para edición y eliminación en línea
+    private Guid? mesocicloEditandoId;
+    private string nombreEditando = string.Empty;
+    private Guid? mesocicloConfirmarEliminarId;
+
+    private record PlanRecomendado(
+        string NombreSplit,
+        string Descripcion,
+        string EtiquetaFatiga,
+        Color ColorFatiga,
+        string[] Sesiones
+    );
+
+    private record ProgresoBloque(
+        int SemanaActual,
+        int TotalSemanas,
+        double Porcentaje,
+        string NombreFase,
+        Color ColorFase
+    );
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarMesociclosAsync();
+    }
+
+    private async Task CargarMesociclosAsync()
+    {
+        try
+        {
+            errorMessage = null;
+            mesocycles = await Http.GetFromJsonAsync<List<Mesocycle>>($"api/Mesocycle/user/{myUserId}");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = ex.Message;
+            Console.WriteLine($"Error al conectar con la API: {ex.Message}");
+        }
+    }
+
+    private ProgresoBloque CalcularProgresoBloque(Mesocycle meso)
+    {
+        var totalDias = Math.Max(7, (meso.EndDate - meso.StartDate).TotalDays);
+        var totalSemanas = Math.Max(1, (int)Math.Ceiling(totalDias / 7.0));
+        var diasTranscurridos = Math.Clamp((DateTime.UtcNow - meso.StartDate).TotalDays, 0, totalDias);
+        var semanaActual = Math.Clamp((int)Math.Floor(diasTranscurridos / 7.0) + 1, 1, totalSemanas);
+        var porcentaje = Math.Round((semanaActual / (double)totalSemanas) * 100.0, 0);
+
+        if (semanaActual >= totalSemanas && totalSemanas >= 4)
+        {
+            return new ProgresoBloque(semanaActual, totalSemanas, porcentaje, "Semana de Descarga (Deload)", Color.Warning);
+        }
+        if (semanaActual == 1)
+        {
+            return new ProgresoBloque(semanaActual, totalSemanas, porcentaje, "Fase Intro / RIR 3", Color.Info);
+        }
+        return new ProgresoBloque(semanaActual, totalSemanas, porcentaje, "Fase Acumulación / RIR 1-2", Color.Success);
+    }
+
+    private void IniciarEdicion(Mesocycle meso)
+    {
+        mesocicloEditandoId = meso.Id;
+        nombreEditando = meso.Name;
+        mesocicloConfirmarEliminarId = null;
+    }
+
+    private void CancelarEdicion()
+    {
+        mesocicloEditandoId = null;
+        nombreEditando = string.Empty;
+    }
+
+    private async Task GuardarEdicionMesocicloAsync(Mesocycle meso)
+    {
+        if (string.IsNullOrWhiteSpace(nombreEditando))
+        {
+            Snackbar.Add("El nombre del mesociclo no puede estar vacío.", Severity.Warning);
+            return;
+        }
+
+        meso.Name = nombreEditando.Trim();
+        var response = await Http.PutAsJsonAsync($"api/Mesocycle/{meso.Id}", meso);
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add("Mesociclo actualizado correctamente.", Severity.Success);
+            mesocicloEditandoId = null;
+        }
+        else
+        {
+            Snackbar.Add("No se pudo actualizar el mesociclo.", Severity.Error);
+        }
+    }
+
+    private async Task CambiarEstadoActivoAsync(Mesocycle meso)
+    {
+        meso.IsActive = !meso.IsActive;
+        var response = await Http.PutAsJsonAsync($"api/Mesocycle/{meso.Id}", meso);
+        if (response.IsSuccessStatusCode)
+        {
+            Snackbar.Add($"Mesociclo marcado como {(meso.IsActive ? "Activo" : "Programado")}.", Severity.Info);
+        }
+        else
+        {
+            meso.IsActive = !meso.IsActive;
+            Snackbar.Add("Error al cambiar el estado del mesociclo.", Severity.Error);
+        }
+    }
+
+    private async Task EliminarMesocicloAsync(Guid id)
+    {
+        var response = await Http.DeleteAsync($"api/Mesocycle/{id}");
+        if (response.IsSuccessStatusCode)
+        {
+            mesocicloConfirmarEliminarId = null;
+            Snackbar.Add("Mesociclo eliminado.", Severity.Success);
+            await CargarMesociclosAsync();
+        }
+        else
+        {
+            Snackbar.Add("No se pudo eliminar el mesociclo.", Severity.Error);
+        }
+    }
+
+    private void OnDiasChanged(int nuevosDias)
+    {
+        if (nuevosDias < 2 || nuevosDias > 6) return;
+        diasSeleccionados = nuevosDias;
+        var plan = ObtenerRecomendacion(diasSeleccionados);
+        nombreNuevoMesociclo = $"Mesociclo {plan.NombreSplit} ({diasSeleccionados} Días)";
+    }
+
+    private PlanRecomendado ObtenerRecomendacion(int dias) => dias switch
+    {
+        2 => new PlanRecomendado(
+            "Full Body (x2)",
+            "Máxima recuperación y frecuencia 2 con bajo estrés sistémico.",
+            "Fatiga SNC: Muy Baja",
+            Color.Success,
+            new[] { "Día 1: Full Body A (Énfasis Fuerza)", "Día 2: Full Body B (Énfasis Hipertrofia)" }
+        ),
+        3 => new PlanRecomendado(
+            "Upper / Lower / Full Body",
+            "Reparte el volumen para evitar fatiga excesiva del SNC.",
+            "Fatiga SNC: Baja-Moderada",
+            Color.Success,
+            new[] { "Día 1: Upper Body (Torso)", "Día 2: Lower Body (Pierna)", "Día 3: Full Body" }
+        ),
+        4 => new PlanRecomendado(
+            "Upper / Lower (Torso / Pierna)",
+            "Equilibrio óptimo entre frecuencia 2, volumen y 3 días de descanso.",
+            "Fatiga SNC: Óptima / Balanceada",
+            Color.Info,
+            new[] { "Día 1: Upper A (Torso Fuerza)", "Día 2: Lower A (Pierna Fuerza)", "Día 3: Upper B (Torso Hipertrofia)", "Día 4: Lower B (Pierna Hipertrofia)" }
+        ),
+        5 => new PlanRecomendado(
+            "Upper / Lower / Push / Pull / Legs",
+            "Alto volumen controlado evitando fatiga axial acumulada.",
+            "Fatiga SNC: Moderada-Alta",
+            Color.Warning,
+            new[] { "Día 1: Upper Body", "Día 2: Lower Body", "Día 3: Push (Empuje)", "Día 4: Pull (Tracción)", "Día 5: Legs (Pierna)" }
+        ),
+        6 => new PlanRecomendado(
+            "Push / Pull / Legs (x2)",
+            "Solo recomendado con volumen moderado por sesión y control estricto de RIR.",
+            "Fatiga SNC: Alta (Controlar RIR 1-2)",
+            Color.Error,
+            new[] { "Día 1: Push A", "Día 2: Pull A", "Día 3: Legs A", "Día 4: Push B", "Día 5: Pull B", "Día 6: Legs B" }
+        ),
+        _ => new PlanRecomendado(
+            "Upper / Lower (Torso / Pierna)",
+            "Equilibrio óptimo entre frecuencia 2, volumen y 3 días de descanso.",
+            "Fatiga SNC: Óptima / Balanceada",
+            Color.Info,
+            new[] { "Día 1: Upper A", "Día 2: Lower A", "Día 3: Upper B", "Día 4: Lower B" }
+        )
+    };
+
+    private async Task AplicarPlanRecomendado()
+    {
+        if (creandoMesociclo) return;
+
+        try
+        {
+            creandoMesociclo = true;
+            var plan = ObtenerRecomendacion(diasSeleccionados);
+            var nombreFinal = string.IsNullOrWhiteSpace(nombreNuevoMesociclo)
+                ? $"Mesociclo {plan.NombreSplit} ({diasSeleccionados} Días)"
+                : nombreNuevoMesociclo.Trim();
+
+            var nuevoMesociclo = new Mesocycle
+            {
+                Id = Guid.NewGuid(),
+                UserId = myUserId,
+                Name = nombreFinal,
+                StartDate = DateTime.UtcNow,
+                EndDate = DateTime.UtcNow.AddDays(42), // 6 semanas de bloque de periodización
+                IsActive = true
+            };
+
+            var response = await Http.PostAsJsonAsync("api/Mesocycle", nuevoMesociclo);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var mesoCreado = await response.Content.ReadFromJsonAsync<Mesocycle>() ?? nuevoMesociclo;
+
+                for (int i = 0; i < plan.Sesiones.Length; i++)
+                {
+                    var nuevaSesion = new WorkoutSession
+                    {
+                        Id = Guid.NewGuid(),
+                        MesocycleId = mesoCreado.Id,
+                        Name = plan.Sesiones[i],
+                        ScheduledDate = DateTime.UtcNow.AddDays(i + 1),
+                        ReadinessScore = 8,
+                        SessionRPE = 8
+                    };
+                    await Http.PostAsJsonAsync("api/WorkoutSessions", nuevaSesion);
+                }
+
+                Snackbar.Add($"¡Plan '{nombreFinal}' aplicado con {plan.Sesiones.Length} sesiones programadas!", Severity.Success);
+                await CargarMesociclosAsync();
+            }
+            else
+            {
+                var detalle = await response.Content.ReadAsStringAsync();
+                Snackbar.Add($"No se pudo crear el mesociclo: {detalle}", Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error al aplicar el plan: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            creandoMesociclo = false;
+        }
+    }
+}

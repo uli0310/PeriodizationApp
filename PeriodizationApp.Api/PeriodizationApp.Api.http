@@ -1,0 +1,58 @@
+POST https://localhost:7098/api/Users
+Content-Type: application/json
+
+{
+  "name": "Odysseus Demo",
+  "username": "odysseus",
+  "email": "demo@odysseus.app",
+  "mesocycles": []
+}
+
+###
+### Crear mi primer Mesociclo
+POST https://localhost:7098/api/Mesocycles
+Content-Type: application/json
+
+{
+  "name": "Fuerza e Hipertrofia Upper/Lower",
+  "startDate": "2026-10-21T00:00:00Z",
+  "endDate": "2026-11-21T00:00:00Z",
+  "userId": "01a16050-b677-7a66-8e94-f01f9e256cfc"
+}
+### Consultar los mesociclos de Odysseus
+GET https://localhost:7098/api/Mesocycles/user/01a16050-b677-7a66-8e94-f01f9e256cfc
+### Crear primera sesión de entrenamiento (Upper A)
+POST https://localhost:7098/api/WorkoutSessions
+Content-Type: application/json
+
+{
+  "mesocycleId": "01a1614c-c2e8-75ad-af88-8392b8ae42e4",
+  "name": "Upper Body A - Dominadas y Fondos",
+  "scheduledDate": "2026-10-22T17:00:00Z",
+  "readinessScore": 8,
+  "sessionRPE": 0
+}
+### Crear ejercicio de Dominadas
+POST https://localhost:7098/api/Exercises
+Content-Type: application/json
+
+{
+  "name": "Dominadas Lastradas",
+  "muscleGroup": "Espalda/Bíceps",
+  "isCompound": true
+}
+### Registrar primera serie de dominadas lastradas
+POST https://localhost:7098/api/SetRecords
+Content-Type: application/json
+
+{
+  "workoutSessionId": "01a1651e-2562-7dd3-a7d7-e255814e122c",
+  "exerciseId": "01a1651b-a6d9-72a9-895d-47cee683a4bb",
+  "setNumber": 1,
+  "weight": 20.5,
+  "targetReps": 8,
+  "actualReps": 8,
+  "targetRIR": 2,
+  "actualRIR": 2,
+  "notes": "Buen control en la excéntrica"
+}

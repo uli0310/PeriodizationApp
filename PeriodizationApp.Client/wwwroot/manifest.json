@@ -1,0 +1,15 @@
+{
+  "name": "Odysseus - Periodization App",
+  "short_name": "Odysseus",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#3b82f6",
+  "icons": [
+    {
+      "src": "odysseus-logo.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ]
+}

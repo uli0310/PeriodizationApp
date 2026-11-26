@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="eriodizationApp.Infrastructure/PeriodizationApp.Infrastructure.csproj" />
+  <Project Path="PeriodizationApp.Api/PeriodizationApp.Api.csproj" />
+  <Project Path="PeriodizationApp.Client/PeriodizationApp.Client.csproj" Id="0282d040-a432-4d63-a81b-1144ede5608f" />
+  <Project Path="PeriodizationApp.Core/PeriodizationApp.Core.csproj" />
+</Solution>
