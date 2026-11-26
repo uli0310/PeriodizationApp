@@ -1,16 +1,20 @@
 ﻿@page "/progreso"
 @using PeriodizationApp.Core.Entities
 @using ApexCharts
+@implements IDisposable
 @inject HttpClient Http
+@inject UserSessionService Session
 @inject ISnackbar Snackbar
 
 <PageTitle>Dashboard de Fuerza y Volumen - Odysseus</PageTitle>
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <div>
-        <MudText Typo="Typo.h4" Class="fw-bold">📈 Dashboard Analítico de Fuerza y Volumen</MudText>
+        <MudText Typo="Typo.h4" Class="fw-bold">
+            📈 Dashboard Analítico — @(Session.IsAuthenticated ? Session.Username : "Atleta")
+        </MudText>
         <MudText Typo="Typo.subtitle2" Color="Color.Secondary">
-            Monitoreo de 1RM Estimado (Epley), Tonelaje y Semáforo de Volumen Muscular (MEV / MAV / MRV)
+            1RM Ajustado por RIR (Epley/Brzycki) y Volumen Fraccional Basado en Evidencia (1.0 Agonista / 0.5 Sinergista para series con RIR &le; 4)
         </MudText>
     </div>
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.AddChart" Href="/registrar">
@@ -28,15 +32,19 @@
 }
 else
 {
+    var seriesEfectivas = todasLasSeries.Where(s => s.ActualRIR <= 4).ToList();
+
     <!-- =========================================================
-         1. TARJETAS KPI GLOBALES
+         1. TARJETAS KPI GLOBALES DEL ATLETA
          ========================================================= -->
     <MudGrid Class="mb-5">
         <MudItem xs="12" sm="6" md="3">
             <MudPaper Elevation="3" Class="pa-4" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 14px;">
-                <MudText Typo="Typo.caption" Color="Color.Secondary">SERIES EFECTIVAS TOTALES</MudText>
-                <MudText Typo="Typo.h4" Color="Color.Primary" Class="fw-bold mt-1">@todasLasSeries.Count</MudText>
-                <MudText Typo="Typo.caption" Color="Color.Info">Registradas en base de datos</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">SERIES EFECTIVAS (RIR &le; 4)</MudText>
+                <MudText Typo="Typo.h4" Color="Color.Primary" Class="fw-bold mt-1">
+                    @seriesEfectivas.Count <span class="fs-6 text-muted">/ @todasLasSeries.Count totales</span>
+                </MudText>
+                <MudText Typo="Typo.caption" Color="Color.Info">Excluye calentamientos (RIR &ge; 5)</MudText>
             </MudPaper>
         </MudItem>
 
@@ -52,59 +60,109 @@ else
 
         <MudItem xs="12" sm="6" md="3">
             <MudPaper Elevation="3" Class="pa-4" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 14px;">
-                <MudText Typo="Typo.caption" Color="Color.Secondary">RIR PROMEDIO GLOBAL</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">RIR PROMEDIO (INTENSIDAD)</MudText>
                 <MudText Typo="Typo.h4" Color="Color.Warning" Class="fw-bold mt-1">
-                    @(todasLasSeries.Any() ? Math.Round(todasLasSeries.Average(s => s.ActualRIR), 1).ToString() : "2.0")
+                    @(seriesEfectivas.Any() ? Math.Round(seriesEfectivas.Average(s => s.ActualRIR), 1).ToString("0.0") : "2.0")
                 </MudText>
-                <MudText Typo="Typo.caption" Color="Color.Secondary">Zona óptima recomendada: 1.0 - 2.5</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Zona óptima hipertrofia: 1.0 - 2.5</MudText>
             </MudPaper>
         </MudItem>
 
         <MudItem xs="12" sm="6" md="3">
             <MudPaper Elevation="3" Class="pa-4" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border: 1px solid rgba(139, 92, 246, 0.25); border-radius: 14px;">
-                <MudText Typo="Typo.caption" Color="Color.Secondary">RÉCORD 1RM HISTÓRICO</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">RÉCORD e1RM (AJUSTADO RIR)</MudText>
                 <MudText Typo="Typo.h4" Color="Color.Info" Class="fw-bold mt-1">
                     @(todasLasSeries.Any() ? $"{todasLasSeries.Max(s => s.Estimated1RM)} kg" : "0 kg")
                 </MudText>
-                <MudText Typo="Typo.caption" Color="Color.Info">Pico máximo estimado</MudText>
+                <MudText Typo="Typo.caption" Color="Color.Info">Pico máximo de fuerza</MudText>
             </MudPaper>
         </MudItem>
     </MudGrid>
 
     <!-- =========================================================
-         2. SEMÁFORO DE VOLUMEN POR GRUPO MUSCULAR (MEV / MAV / MRV)
+         2. SEMÁFORO DE VOLUMEN FRACCIONAL (1.0 PRIMARIO / 0.5 SINERGISTA)
          ========================================================= -->
     <MudCard Elevation="3" Class="mb-5 pa-4" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border-radius: 16px;">
         <MudCardHeader>
             <CardHeaderContent>
-                <div class="d-flex align-items-center gap-2">
-                    <MudIcon Icon="@Icons.Material.Filled.Equalizer" Color="Color.Primary" />
-                    <MudText Typo="Typo.h6" Class="fw-bold">Semáforo de Volumen Acumulado por Grupo Muscular (MEV / MAV / MRV)</MudText>
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div class="d-flex align-items-center gap-2">
+                        <MudIcon Icon="@Icons.Material.Filled.Equalizer" Color="Color.Primary" />
+                        <MudText Typo="Typo.h6" Class="fw-bold">
+                            Semáforo de Volumen Fraccional Efectivo (MEV / MAV / MRV)
+                        </MudText>
+                    </div>
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Info"
+                               Size="Size.Small"
+                               StartIcon="@Icons.Material.Filled.Science"
+                               OnClick="@(() => mostrarEvidenciaProgreso = !mostrarEvidenciaProgreso)">
+                        @(mostrarEvidenciaProgreso ? "Ocultar Fundamento Científico" : "🔬 ¿Cómo se mide este volumen?")
+                    </MudButton>
                 </div>
                 <MudText Typo="Typo.body2" Color="Color.Secondary">
-                    Referencia científica por bloque/semana: <strong>&lt;6 series</strong> (Mantenimiento) | <strong>6-9 series</strong> (MEV) | <strong>10-18 series</strong> (MAV - Óptimo Hipertrofia) | <strong>&gt;18 series</strong> (MRV - Riesgo Fatiga)
+                    Cada serie efectiva (RIR &le; 4) suma <strong>1.0 serie</strong> al músculo agonista primario y <strong>0.5 series</strong> a los músculos sinergistas secundarios.
                 </MudText>
             </CardHeaderContent>
         </MudCardHeader>
         <MudCardContent>
-            <MudGrid>
-                @foreach (var vol in ObtenerVolumenPorGrupoMuscular())
-                {
-                    <MudItem xs="12" sm="6" md="4">
-                        <div class="p-3 rounded-3" style="background-color: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06);">
-                            <div class="d-flex justify-content-between align-items-center mb-1">
-                                <MudText Typo="Typo.subtitle2" Class="fw-bold">@vol.Grupo</MudText>
-                                <MudChip T="string" Size="Size.Small" Color="@vol.ColorEstado" Variant="Variant.Outlined">
-                                    @vol.Series series — @vol.Etiqueta
-                                </MudChip>
-                            </div>
-                            <MudProgressLinear Color="@vol.ColorEstado"
-                                               Value="@Math.Min(100, (vol.Series / 20.0) * 100.0)"
-                                               Rounded="true"
-                                               Size="Size.Medium" />
-                        </div>
-                    </MudItem>
-                }
+            @if (mostrarEvidenciaProgreso)
+            {
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Icon="@Icons.Material.Filled.Biotech" Class="mb-4" Style="background-color: rgba(56, 189, 248, 0.06); border-radius: 12px;">
+                    <MudText Typo="Typo.subtitle2" Color="Color.Info" Class="fw-bold mb-1">
+                        📚 Evidencia Científica de las Métricas del Dashboard:
+                    </MudText>
+                    <ul class="mb-1 ps-3" style="font-size: 0.88rem;">
+                        <li><strong>1. Contabilidad de Volumen Fraccional (1.0 Agonista / 0.5 Sinergista):</strong> En ejercicios multiarticulares (ej. Press de Banca), los músculos sinergistas como el tríceps y el deltoides anterior reciben aproximadamente la mitad del estímulo hipertrófico que en un ejercicio directo. El método fraccional (1.0 + 0.5) es el estándar validado en meta-regresiones recientes sobre volumen e hipertrofia (<em>Pelland et al., 2024</em>).</li>
+                        <li><strong>2. Filtro de Series Efectivas (RIR &le; 4):</strong> Solo las repeticiones realizadas cerca del fallo muscular reclutan las unidades motoras de alto umbral (fibras tipo II) con una velocidad de acortamiento suficientemente baja para generar alta tensión mecánica (<em>Robinson et al., 2024; Schoenfeld, 2010</em>). Por ello, las series de calentamiento con RIR &ge; 5 se excluyen automáticamente del conteo de hipertrofia.</li>
+                        <li><strong>3. Zonas MEV / MAV / MRV:</strong> Menos de 6 series semanales mantiene masa muscular; entre <strong>10 y 18 series semanales (MAV)</strong> maximiza la tasa de hipertrofia; superar las 18-20 series acerca al atleta a su <strong>Volumen Máximo Recuperable (MRV)</strong> con rendimientos decrecientes y mayor fatiga articular.</li>
+                    </ul>
+                </MudAlert>
+            }
+            <MudGrid Class="align-items-center">
+                <MudItem xs="12" lg="5">
+                    <div class="p-3 rounded-3" style="background-color: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.05);">
+                        <MudText Typo="Typo.subtitle2" Color="Color.Info" Class="fw-bold text-center mb-2">
+                            🕸️ Radar de Balance Muscular (Estilo Hevy)
+                        </MudText>
+                        @{
+                            var datosRadar = ObtenerVolumenFraccionalPorGrupoMuscular().ToList();
+                        }
+                        <ApexChart TItem="VolumenMuscularFraccional" Title="" Height="290" Options="opcionesRadar">
+                            <ApexPointSeries TItem="VolumenMuscularFraccional"
+                                             Items="datosRadar"
+                                             Name="Series Efectivas"
+                                             SeriesType="SeriesType.Radar"
+                                             XValue="@(v => v.GrupoCorto)"
+                                             YValue="@(v => (decimal)v.SeriesFraccionales)" />
+                        </ApexChart>
+                    </div>
+                </MudItem>
+
+                <MudItem xs="12" lg="7">
+                    <MudGrid>
+                        @foreach (var vol in ObtenerVolumenFraccionalPorGrupoMuscular())
+                        {
+                            <MudItem xs="12" sm="6">
+                                <div class="p-3 rounded-3" style="background-color: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06);">
+                                    <div class="d-flex justify-content-between align-items-center mb-1">
+                                        <MudText Typo="Typo.subtitle2" Class="fw-bold">@vol.Grupo</MudText>
+                                        <MudChip T="string" Size="Size.Small" Color="@vol.ColorEstado" Variant="Variant.Outlined">
+                                            @vol.SeriesFraccionales.ToString("0.#") series — @vol.Etiqueta
+                                        </MudChip>
+                                    </div>
+                                    <MudProgressLinear Color="@vol.ColorEstado"
+                                                       Value="@Math.Min(100, (vol.SeriesFraccionales / 20.0) * 100.0)"
+                                                       Rounded="true"
+                                                       Size="Size.Medium" />
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-1">
+                                        Directas: @vol.SeriesDirectas | Indirectas (×0.5): @vol.SeriesIndirectas
+                                    </MudText>
+                                </div>
+                            </MudItem>
+                        }
+                    </MudGrid>
+                </MudItem>
             </MudGrid>
         </MudCardContent>
     </MudCard>
@@ -117,7 +175,7 @@ else
             <MudGrid Class="align-items-center mb-4">
                 <MudItem xs="12" md="6">
                     <MudSelect T="Guid"
-                               Label="Selecciona un ejercicio para analizar su curva de 1RM"
+                               Label="Selecciona un ejercicio para analizar su curva de e1RM"
                                Value="ejercicioSeleccionado"
                                ValueChanged="OnEjercicioSeleccionadoAsync"
                                Variant="Variant.Outlined"
@@ -138,7 +196,7 @@ else
                 {
                     <MudItem xs="6" md="3">
                         <div class="p-3 rounded-3 text-center" style="background-color: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.25);">
-                            <small class="text-primary fw-bold d-block">MEJOR 1RM EN ESTE EJERCICIO</small>
+                            <small class="text-primary fw-bold d-block">MEJOR e1RM (CON RIR)</small>
                             <span class="fs-3 fw-bold text-light">@historialSeries.Max(s => s.Estimated1RM) kg</span>
                         </div>
                     </MudItem>
@@ -162,15 +220,15 @@ else
             {
                 <div class="mb-5 p-3 rounded-3" style="background-color: #1e2126; border: 1px solid #2a2e35;">
                     <MudText Typo="Typo.h6" Color="Color.Info" Class="fw-bold mb-3">
-                        Evolución de Fuerza (1RM Estimado en kg)
+                        Evolución de Fuerza (e1RM Ajustado por RIR en kg)
                     </MudText>
 
                     <ApexChart @key="ejercicioSeleccionado" TItem="SetRecord" Title="" Height="320" Options="opcionesGrafica">
                         <ApexPointSeries TItem="SetRecord"
                                          Items="historialSeries"
-                                         Name="1RM Estimado (kg)"
+                                         Name="e1RM Ajustado por RIR (kg)"
                                          SeriesType="SeriesType.Area"
-                                         XValue="@(e => $"S{historialSeries.IndexOf(e) + 1}: {e.Weight}kg x {e.ActualReps}")"
+                                         XValue="@(e => $"S{historialSeries.IndexOf(e) + 1}: {e.Weight}kg x {e.ActualReps} @RIR {e.ActualRIR}")"
                                          YValue="@(e => e.Estimated1RM)" />
                     </ApexChart>
                 </div>
@@ -183,26 +241,28 @@ else
                         <MudTh>Carga (kg)</MudTh>
                         <MudTh>Repeticiones</MudTh>
                         <MudTh>RIR</MudTh>
+                        <MudTh>Reps al Fallo</MudTh>
                         <MudTh>Tonelaje</MudTh>
-                        <MudTh>1RM Estimado</MudTh>
+                        <MudTh>e1RM (Con RIR)</MudTh>
                     </HeaderContent>
                     <RowTemplate>
                         <MudTd DataLabel="Carga (kg)"><strong>@context.Weight kg</strong></MudTd>
                         <MudTd DataLabel="Repeticiones">@context.ActualReps reps</MudTd>
                         <MudTd DataLabel="RIR">
-                            <MudChip T="string" Size="Size.Small" Color="@(context.ActualRIR <= 2 ? Color.Success : Color.Info)">
-                                RIR @context.ActualRIR
+                            <MudChip T="string" Size="Size.Small" Color="@(context.ActualRIR <= 2 ? Color.Success : (context.ActualRIR <= 4 ? Color.Info : Color.Default))">
+                                RIR @context.ActualRIR @(context.ActualRIR >= 5 ? "(Calentamiento)" : "")
                             </MudChip>
                         </MudTd>
+                        <MudTd DataLabel="Reps al Fallo">@(context.ActualReps + context.ActualRIR) reps est.</MudTd>
                         <MudTd DataLabel="Tonelaje">@(context.Weight * context.ActualReps) kg</MudTd>
-                        <MudTd DataLabel="1RM Estimado"><span class="text-info fw-bold">@context.Estimated1RM kg</span></MudTd>
+                        <MudTd DataLabel="e1RM (Con RIR)"><span class="text-info fw-bold">@context.Estimated1RM kg</span></MudTd>
                     </RowTemplate>
                 </MudTable>
             }
             else if (ejercicioSeleccionado != Guid.Empty)
             {
                 <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mt-3">
-                    Aún no hay series registradas para este ejercicio. ¡Ve a <strong>Registrar Serie</strong> para capturar tu primer levantamiento!
+                    Aún no tienes series registradas para este ejercicio en tu cuenta. ¡Ve a <strong>Registrar Serie</strong> para capturar tu primer levantamiento!
                 </MudAlert>
             }
         </MudCardContent>
@@ -215,8 +275,17 @@ else
     private List<SetRecord>? historialSeries;
     private Guid ejercicioSeleccionado = Guid.Empty;
     private bool cargandoHistorial = false;
+    private bool mostrarEvidenciaProgreso = false;
 
-    private record VolumenMuscular(string Grupo, int Series, string Etiqueta, Color ColorEstado);
+    private record VolumenMuscularFraccional(
+        string Grupo,
+        string GrupoCorto,
+        double SeriesFraccionales,
+        int SeriesDirectas,
+        int SeriesIndirectas,
+        string Etiqueta,
+        Color ColorEstado
+    );
 
     private ApexChartOptions<SetRecord> opcionesGrafica = new ApexChartOptions<SetRecord>
     {
@@ -226,14 +295,43 @@ else
         DataLabels = new DataLabels { Enabled = false }
     };
 
+    private ApexChartOptions<VolumenMuscularFraccional> opcionesRadar = new ApexChartOptions<VolumenMuscularFraccional>
+    {
+        Theme = new Theme { Mode = Mode.Dark },
+        Chart = new Chart { Background = "transparent", Toolbar = new Toolbar { Show = false } },
+        Stroke = new Stroke { Width = 2 },
+        Fill = new Fill { Opacity = 0.25 },
+        Markers = new Markers { Size = 4 }
+    };
+
     protected override async Task OnInitializedAsync()
+    {
+        Session.OnChange += OnSessionChanged;
+        await Session.InitializeAsync();
+        await CargarDatosUsuarioAsync();
+    }
+
+    private async void OnSessionChanged()
+    {
+        await CargarDatosUsuarioAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Session.OnChange -= OnSessionChanged;
+    }
+
+    private async Task CargarDatosUsuarioAsync()
     {
         try
         {
             exercises = await Http.GetFromJsonAsync<List<Exercise>>("api/Exercises") ?? new();
-            todasLasSeries = await Http.GetFromJsonAsync<List<SetRecord>>("api/SetRecords") ?? new();
+            var urlSeries = Session.UserId != Guid.Empty
+                ? $"api/SetRecords?userId={Session.UserId}"
+                : "api/SetRecords";
+            todasLasSeries = await Http.GetFromJsonAsync<List<SetRecord>>(urlSeries) ?? new();
 
-            // Si ya hay algún ejercicio con series registradas, seleccionamos automáticamente el más entrenado
             var ejercicioConDatos = todasLasSeries
                 .GroupBy(s => s.ExerciseId)
                 .OrderByDescending(g => g.Count())
@@ -244,6 +342,10 @@ else
             {
                 await OnEjercicioSeleccionadoAsync(ejercicioConDatos);
             }
+            else
+            {
+                historialSeries = null;
+            }
         }
         catch (Exception ex)
         {
@@ -253,35 +355,60 @@ else
         }
     }
 
-    private IEnumerable<VolumenMuscular> ObtenerVolumenPorGrupoMuscular()
+    private IEnumerable<VolumenMuscularFraccional> ObtenerVolumenFraccionalPorGrupoMuscular()
     {
-        var grupos = new (string Nombre, string[] Claves)[]
+        var grupos = new (string Nombre, string Corto, string[] Claves)[]
         {
-            ("Pecho", new[] { "Pecho" }),
-            ("Espalda", new[] { "Espalda", "Dorsal", "Trapecio" }),
-            ("Pierna (Cuádriceps/Glúteo/Isquios)", new[] { "Cuádriceps", "Glúteo", "Isquiotibiales", "Pantorrilla", "Pierna" }),
-            ("Hombro", new[] { "Hombro" }),
-            ("Bíceps", new[] { "Bíceps" }),
-            ("Tríceps", new[] { "Tríceps" })
+            ("Pecho", "Pecho", new[] { "Pecho" }),
+            ("Espalda", "Espalda", new[] { "Espalda", "Dorsal", "Trapecio" }),
+            ("Pierna (Cuádriceps/Glúteo/Isquios)", "Pierna", new[] { "Cuádriceps", "Glúteo", "Isquiotibiales", "Pantorrilla", "Pierna" }),
+            ("Hombro", "Hombro", new[] { "Hombro" }),
+            ("Bíceps", "Bíceps", new[] { "Bíceps" }),
+            ("Tríceps", "Tríceps", new[] { "Tríceps" })
         };
 
         var mapaEjercicios = (exercises ?? new()).ToDictionary(e => e.Id, e => e.MuscleGroup ?? string.Empty);
 
+        // Solo contabilizamos series efectivas con RIR <= 4
+        var seriesEfectivas = (todasLasSeries ?? new()).Where(s => s.ActualRIR <= 4).ToList();
+
         foreach (var g in grupos)
         {
-            int conteo = (todasLasSeries ?? new()).Count(s =>
-                mapaEjercicios.TryGetValue(s.ExerciseId, out var musculos) &&
-                g.Claves.Any(c => musculos.Contains(c, StringComparison.OrdinalIgnoreCase)));
+            int directas = 0;
+            int indirectas = 0;
 
-            var (etiqueta, color) = conteo switch
+            foreach (var serie in seriesEfectivas)
             {
-                < 6 => ("Bajo MEV / Mantenimiento", Color.Info),
-                < 10 => ("MEV (Volumen Efectivo)", Color.Primary),
-                <= 18 => ("MAV (Óptimo Hipertrofia)", Color.Success),
+                if (!mapaEjercicios.TryGetValue(serie.ExerciseId, out var musculoStr) || string.IsNullOrWhiteSpace(musculoStr))
+                    continue;
+
+                var partes = musculoStr.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                if (partes.Length == 0) continue;
+
+                // El primer músculo antes del '/' es el Agonista Primario (1.0 serie)
+                bool esPrimario = g.Claves.Any(c => partes[0].Contains(c, StringComparison.OrdinalIgnoreCase));
+                if (esPrimario)
+                {
+                    directas++;
+                }
+                else if (partes.Skip(1).Any(sec => g.Claves.Any(c => sec.Contains(c, StringComparison.OrdinalIgnoreCase))))
+                {
+                    // Los músculos posteriores al primer '/' son Sinergistas Secundarios (0.5 series)
+                    indirectas++;
+                }
+            }
+
+            double totalFraccional = directas + (indirectas * 0.5);
+
+            var (etiqueta, color) = totalFraccional switch
+            {
+                < 6.0 => ("Bajo MEV / Mantenimiento", Color.Info),
+                < 10.0 => ("MEV (Volumen Efectivo)", Color.Primary),
+                <= 18.0 => ("MAV (Óptimo Hipertrofia)", Color.Success),
                 _ => ("MRV (Alerta Fatiga)", Color.Warning)
             };
 
-            yield return new VolumenMuscular(g.Nombre, conteo, etiqueta, color);
+            yield return new VolumenMuscularFraccional(g.Nombre, g.Corto, totalFraccional, directas, indirectas, etiqueta, color);
         }
     }
 
@@ -293,7 +420,10 @@ else
             cargandoHistorial = true;
             try
             {
-                var data = await Http.GetFromJsonAsync<List<SetRecord>>($"api/SetRecords/exercise/{ejercicioSeleccionado}");
+                var url = Session.UserId != Guid.Empty
+                    ? $"api/SetRecords/exercise/{ejercicioSeleccionado}?userId={Session.UserId}"
+                    : $"api/SetRecords/exercise/{ejercicioSeleccionado}";
+                var data = await Http.GetFromJsonAsync<List<SetRecord>>(url);
                 historialSeries = data?.OrderBy(s => s.Id).ToList();
             }
             catch (Exception ex)

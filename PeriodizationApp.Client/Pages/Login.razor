@@ -1,0 +1,245 @@
+@page "/login"
+@inject HttpClient Http
+@inject UserSessionService Session
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+
+<PageTitle>Acceso de Atletas - Odysseus</PageTitle>
+
+<MudGrid Justify="Justify.Center" Class="mt-4">
+    <MudItem xs="12" sm="10" md="6" lg="5">
+        <MudCard Elevation="4" Class="pa-4" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 18px;">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <div class="text-center">
+                        <MudIcon Icon="@Icons.Material.Filled.FitnessCenter" Color="Color.Primary" Size="Size.Large" Class="mb-2" />
+                        <MudText Typo="Typo.h4" Class="fw-bold">Odysseus Science</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            Cada atleta tiene sus propios mesociclos, sesiones e historial de fuerza
+                        </MudText>
+                    </div>
+                </CardHeaderContent>
+            </MudCardHeader>
+
+            <MudCardContent>
+                @if (Session.IsAuthenticated)
+                {
+                    <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="mb-4">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <span>Sesión activa como: <strong>@Session.Username</strong></span>
+                            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" Href="/">
+                                Ir a mi Panel
+                            </MudButton>
+                        </div>
+                    </MudAlert>
+                }
+
+                <MudTabs Elevation="0" Rounded="true" ApplyEffectsToContainer="true" TabPanelsClass="pt-4">
+                    <!-- PESTAÑA 1: INICIAR SESIÓN -->
+                    <MudTabPanel Text="Iniciar Sesión" Icon="@Icons.Material.Filled.Login">
+                        <MudTextField T="string"
+                                      @bind-Value="loginUsername"
+                                      Label="Usuario o Correo Electrónico"
+                                      Placeholder="Ej. odysseus"
+                                      Variant="Variant.Outlined"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Person"
+                                      Class="mb-3" />
+
+                        <MudTextField T="string"
+                                      @bind-Value="loginPassword"
+                                      Label="Contraseña"
+                                      InputType="InputType.Password"
+                                      Variant="Variant.Outlined"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Lock"
+                                      Class="mb-4" />
+
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   FullWidth="true"
+                                   Size="Size.Large"
+                                   StartIcon="@Icons.Material.Filled.Login"
+                                   Disabled="@procesando"
+                                   OnClick="IniciarSesionAsync">
+                            @(procesando ? "Verificando..." : "Entrar a mi Cuenta")
+                        </MudButton>
+                    </MudTabPanel>
+
+                    <!-- PESTAÑA 2: CREAR CUENTA NUEVA -->
+                    <MudTabPanel Text="Crear Cuenta" Icon="@Icons.Material.Filled.PersonAdd">
+                        <MudTextField T="string"
+                                      @bind-Value="regUsername"
+                                      Label="Nombre de Usuario"
+                                      Placeholder="Ej. mama_fit o carlos"
+                                      Variant="Variant.Outlined"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Badge"
+                                      Class="mb-3" />
+
+                        <MudTextField T="string"
+                                      @bind-Value="regEmail"
+                                      Label="Correo Electrónico (Opcional)"
+                                      Placeholder="Ej. atleta@correo.com"
+                                      Variant="Variant.Outlined"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Email"
+                                      Class="mb-3" />
+
+                        <MudTextField T="string"
+                                      @bind-Value="regPassword"
+                                      Label="Contraseña"
+                                      InputType="InputType.Password"
+                                      Variant="Variant.Outlined"
+                                      Adornment="Adornment.Start"
+                                      AdornmentIcon="@Icons.Material.Filled.Key"
+                                      Class="mb-4" />
+
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Success"
+                                   FullWidth="true"
+                                   Size="Size.Large"
+                                   StartIcon="@Icons.Material.Filled.PersonAddAlt1"
+                                   Disabled="@procesando"
+                                   OnClick="RegistrarCuentaAsync">
+                            @(procesando ? "Creando cuenta..." : "Crear Cuenta y Empezar")
+                        </MudButton>
+                    </MudTabPanel>
+                </MudTabs>
+
+                @if (usuariosRegistrados != null && usuariosRegistrados.Any())
+                {
+                    <MudDivider Class="my-5" />
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-2 fw-bold">
+                        ATLETAS REGISTRADOS EN ESTE SERVIDOR (SELECCIÓN RÁPIDA):
+                    </MudText>
+                    <div class="d-flex flex-wrap gap-2">
+                        @foreach (var u in usuariosRegistrados)
+                        {
+                            <MudChip T="string"
+                                     Color="@(Session.UserId == u.Id ? Color.Success : Color.Primary)"
+                                     Variant="@(Session.UserId == u.Id ? Variant.Filled : Variant.Outlined)"
+                                     Icon="@Icons.Material.Filled.AccountCircle"
+                                     OnClick="@(() => SeleccionarUsuarioRapido(u))"
+                                     Style="cursor: pointer;">
+                                @u.Username
+                            </MudChip>
+                        }
+                    </div>
+                }
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private string loginUsername = string.Empty;
+    private string loginPassword = string.Empty;
+
+    private string regUsername = string.Empty;
+    private string regEmail = string.Empty;
+    private string regPassword = string.Empty;
+
+    private bool procesando = false;
+    private List<UserResponse>? usuariosRegistrados;
+
+    private record AuthPayload(string Username, string? Email, string Password);
+    private record UserResponse(Guid Id, string Username, string Email, DateTime CreatedAt);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Session.InitializeAsync();
+        await CargarUsuariosAsync();
+    }
+
+    private async Task CargarUsuariosAsync()
+    {
+        try
+        {
+            usuariosRegistrados = await Http.GetFromJsonAsync<List<UserResponse>>("api/Users");
+        }
+        catch { }
+    }
+
+    private void SeleccionarUsuarioRapido(UserResponse u)
+    {
+        loginUsername = u.Username;
+        Snackbar.Add($"Usuario '{u.Username}' seleccionado. Ingresa tu contraseña o pulsa 'Entrar a mi Cuenta'.", Severity.Info);
+    }
+
+    private async Task IniciarSesionAsync()
+    {
+        if (string.IsNullOrWhiteSpace(loginUsername))
+        {
+            Snackbar.Add("Ingresa tu nombre de usuario o correo.", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            procesando = true;
+            var response = await Http.PostAsJsonAsync("api/Users/login", new AuthPayload(loginUsername, null, loginPassword));
+            if (response.IsSuccessStatusCode)
+            {
+                var user = await response.Content.ReadFromJsonAsync<UserResponse>();
+                if (user != null)
+                {
+                    await Session.SetUserAsync(user.Id, user.Username, user.Email);
+                    Snackbar.Add($"¡Bienvenido de nuevo, {user.Username}!", Severity.Success);
+                    Navigation.NavigateTo("/");
+                }
+            }
+            else
+            {
+                var msg = await response.Content.ReadAsStringAsync();
+                Snackbar.Add(string.IsNullOrWhiteSpace(msg) ? "Credenciales inválidas." : msg, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error al iniciar sesión: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            procesando = false;
+        }
+    }
+
+    private async Task RegistrarCuentaAsync()
+    {
+        if (string.IsNullOrWhiteSpace(regUsername) || string.IsNullOrWhiteSpace(regPassword))
+        {
+            Snackbar.Add("Ingresa un nombre de usuario y una contraseña para tu cuenta.", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            procesando = true;
+            var response = await Http.PostAsJsonAsync("api/Users/register", new AuthPayload(regUsername, regEmail, regPassword));
+            if (response.IsSuccessStatusCode)
+            {
+                var user = await response.Content.ReadFromJsonAsync<UserResponse>();
+                if (user != null)
+                {
+                    await Session.SetUserAsync(user.Id, user.Username, user.Email);
+                    Snackbar.Add($"¡Cuenta '{user.Username}' creada con éxito! Ya puedes crear tu primer mesociclo.", Severity.Success);
+                    Navigation.NavigateTo("/");
+                }
+            }
+            else
+            {
+                var msg = await response.Content.ReadAsStringAsync();
+                Snackbar.Add(string.IsNullOrWhiteSpace(msg) ? "No se pudo crear la cuenta." : msg, Severity.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error al registrar: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            procesando = false;
+        }
+    }
+}

@@ -1,4 +1,7 @@
 ﻿@inherits LayoutComponentBase
+@implements IDisposable
+@inject UserSessionService Session
+@inject NavigationManager Navigation
 
 <MudThemeProvider IsDarkMode="true" />
 <MudPopoverProvider />
@@ -8,27 +11,107 @@
 <MudLayout>
     <MudAppBar Elevation="1">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@((e) => DrawerToggle())" />
-        <MudText Typo="Typo.h6" Class="ml-3">Odysseus</MudText>
+        <MudText Typo="Typo.h6" Class="ml-2 fw-bold">Odysseus</MudText>
         <MudSpacer />
-        <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Color="Color.Inherit" Href="https://learn.microsoft.com/aspnet/core/" Target="_blank" />
+
+        @if (Session.IsAuthenticated)
+        {
+            <MudChip T="string"
+                     Color="Color.Primary"
+                     Variant="Variant.Outlined"
+                     Icon="@Icons.Material.Filled.AccountCircle"
+                     OnClick="@(() => Navigation.NavigateTo("/login"))"
+                     Style="cursor: pointer;">
+                @Session.Username
+            </MudChip>
+            <MudIconButton Icon="@Icons.Material.Filled.Logout"
+                           Color="Color.Inherit"
+                           title="Cambiar cuenta o cerrar sesión"
+                           OnClick="CerrarSesionAsync" />
+        }
+        else
+        {
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Size="Size.Small"
+                       StartIcon="@Icons.Material.Filled.Login"
+                       Href="/login">
+                Iniciar Sesión
+            </MudButton>
+        }
     </MudAppBar>
 
     <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2">
         <NavMenu />
     </MudDrawer>
 
-    <MudMainContent>
-        <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="my-4 pt-4">
+    <MudMainContent Class="odysseus-main-content">
+        <MudContainer MaxWidth="MaxWidth.ExtraLarge" Class="my-4 pt-4 pb-10">
             @Body
         </MudContainer>
     </MudMainContent>
+
+    <!-- BARRA DE NAVEGACIÓN INFERIOR ESTILO HEVY (MÓVIL / TABLET) -->
+    <nav class="hevy-bottom-nav d-md-none">
+        <a href="/" class="hevy-nav-item @(EsRutaActiva("", true) ? "active" : "")">
+            <MudIcon Icon="@Icons.Material.Filled.Dashboard" Size="Size.Medium" />
+            <span>Rutinas</span>
+        </a>
+        <a href="/registrar" class="hevy-nav-item hevy-nav-train @(EsRutaActiva("registrar") || EsRutaActiva("sesion") ? "active" : "")">
+            <MudIcon Icon="@Icons.Material.Filled.FitnessCenter" Size="Size.Medium" />
+            <span>Entrenar</span>
+        </a>
+        <a href="/progreso" class="hevy-nav-item @(EsRutaActiva("progreso") ? "active" : "")">
+            <MudIcon Icon="@Icons.Material.Filled.ShowChart" Size="Size.Medium" />
+            <span>Progreso</span>
+        </a>
+        <a href="/ejercicios" class="hevy-nav-item @(EsRutaActiva("ejercicios") ? "active" : "")">
+            <MudIcon Icon="@Icons.Material.Filled.LibraryBooks" Size="Size.Medium" />
+            <span>Ejercicios</span>
+        </a>
+        <a href="/login" class="hevy-nav-item @(EsRutaActiva("login") ? "active" : "")">
+            <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Medium" />
+            <span>Perfil</span>
+        </a>
+    </nav>
 </MudLayout>
 
 @code {
     private bool _drawerOpen = true;
 
+    protected override async Task OnInitializedAsync()
+    {
+        Session.OnChange += StateHasChanged;
+        Navigation.LocationChanged += OnLocationChanged;
+        await Session.InitializeAsync();
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        StateHasChanged();
+    }
+
+    private bool EsRutaActiva(string segmento, bool exacto = false)
+    {
+        var relative = Navigation.ToBaseRelativePath(Navigation.Uri).Trim('/');
+        if (exacto) return string.IsNullOrEmpty(relative) && string.IsNullOrEmpty(segmento);
+        return relative.StartsWith(segmento, StringComparison.OrdinalIgnoreCase);
+    }
+
     private void DrawerToggle()
     {
         _drawerOpen = !_drawerOpen;
+    }
+
+    private async Task CerrarSesionAsync()
+    {
+        await Session.LogoutAsync();
+        Navigation.NavigateTo("/login");
+    }
+
+    public void Dispose()
+    {
+        Session.OnChange -= StateHasChanged;
+        Navigation.LocationChanged -= OnLocationChanged;
     }
 }

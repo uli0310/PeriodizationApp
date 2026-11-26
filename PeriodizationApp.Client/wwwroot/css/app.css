@@ -158,3 +158,79 @@ body {
     font-family: 'Inter', sans-serif !important;
     font-weight: 600 !important;
 }
+
+/* ==========================================
+   4. BARRA INFERIOR MÓVIL Y TABLAS ESTILO HEVY
+========================================== */
+.hevy-bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 64px;
+    background: rgba(18, 21, 27, 0.94);
+    backdrop-filter: blur(14px);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    z-index: 1300;
+    padding-bottom: env(safe-area-inset-bottom);
+}
+
+.hevy-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #94a3b8;
+    text-decoration: none;
+    font-size: 0.72rem;
+    font-weight: 600;
+    gap: 2px;
+    transition: all 0.2s ease;
+    flex: 1;
+    height: 100%;
+}
+
+.hevy-nav-item:hover,
+.hevy-nav-item.active {
+    color: #3b82f6;
+}
+
+.hevy-nav-item.hevy-nav-train.active {
+    color: #10b981;
+}
+
+@media (max-width: 960px) {
+    .odysseus-main-content {
+        padding-bottom: 80px !important;
+    }
+}
+
+.hevy-set-row {
+    transition: background-color 0.25s ease, transform 0.15s ease;
+    border-radius: 10px;
+}
+
+.hevy-set-row.completed {
+    background-color: rgba(16, 185, 129, 0.16) !important;
+    border-left: 4px solid #10b981;
+}
+
+.hevy-input {
+    background-color: rgba(255, 255, 255, 0.06) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    color: #fff !important;
+    border-radius: 8px !important;
+    text-align: center;
+    font-weight: 700;
+    width: 72px;
+    padding: 6px 4px;
+}
+
+.hevy-input:focus {
+    border-color: #3b82f6 !important;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+}

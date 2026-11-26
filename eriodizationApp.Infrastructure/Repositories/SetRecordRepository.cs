@@ -13,9 +13,17 @@ namespace PeriodizationApp.Infrastructure.Repositories
             _context = context;
         }
 
-        public async Task<IEnumerable<SetRecord>> GetAllAsync()
+        public async Task<IEnumerable<SetRecord>> GetAllAsync(Guid? userId = null)
         {
-            return await _context.SetRecords
+            var query = _context.SetRecords.AsQueryable();
+            if (userId.HasValue && userId.Value != Guid.Empty)
+            {
+                query = query.Where(sr =>
+                    sr.UserId == userId.Value ||
+                    (sr.UserId == null && sr.WorkoutSession != null && sr.WorkoutSession.Mesocycle != null && sr.WorkoutSession.Mesocycle.UserId == userId.Value));
+            }
+
+            return await query
                 .OrderBy(sr => sr.Id)
                 .ToListAsync();
         }
@@ -38,10 +46,19 @@ namespace PeriodizationApp.Infrastructure.Repositories
             return setRecord;
         }
 
-        public async Task<IEnumerable<SetRecord>> GetByExerciseAsync(Guid exerciseId)
+        public async Task<IEnumerable<SetRecord>> GetByExerciseAsync(Guid exerciseId, Guid? userId = null)
         {
-            return await _context.SetRecords
-                .Where(record => record.ExerciseId == exerciseId)
+            var query = _context.SetRecords
+                .Where(record => record.ExerciseId == exerciseId);
+
+            if (userId.HasValue && userId.Value != Guid.Empty)
+            {
+                query = query.Where(sr =>
+                    sr.UserId == userId.Value ||
+                    (sr.UserId == null && sr.WorkoutSession != null && sr.WorkoutSession.Mesocycle != null && sr.WorkoutSession.Mesocycle.UserId == userId.Value));
+            }
+
+            return await query
                 .OrderBy(record => record.Id)
                 .ToListAsync();
         }

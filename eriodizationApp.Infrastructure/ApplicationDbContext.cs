@@ -21,6 +21,13 @@ namespace PeriodizationApp.Infrastructure
         {
             base.OnModelCreating(modelBuilder);
 
+            // Al eliminar una WorkoutSession o Mesocycle, conservar las series históricas poniendo WorkoutSessionId en NULL
+            modelBuilder.Entity<SetRecord>()
+                .HasOne(sr => sr.WorkoutSession)
+                .WithMany(ws => ws.SetRecords)
+                .HasForeignKey(sr => sr.WorkoutSessionId)
+                .OnDelete(DeleteBehavior.SetNull);
+
             // Sembrado de 51 ejercicios categorizados con MuscleGroup e IsCompound corregidos biomecánicamente
             modelBuilder.Entity<Exercise>().HasData(
                 // PECHO (11111111)

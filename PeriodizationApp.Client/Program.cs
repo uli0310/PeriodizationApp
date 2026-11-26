@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using PeriodizationApp.Client;
+using PeriodizationApp.Client.Services;
 using ApexCharts;
 using MudBlazor.Services;
 
@@ -36,6 +37,7 @@ else
 }
 
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = apiBaseUri });
+builder.Services.AddScoped<UserSessionService>();
 builder.Services.AddApexCharts();
 builder.Services.AddMudServices();
 

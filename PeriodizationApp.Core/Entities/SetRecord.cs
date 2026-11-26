@@ -6,7 +6,10 @@ namespace PeriodizationApp.Core.Entities
     {
         public Guid Id { get; set; }
 
-        // Hacemos la sesión opcional para permitir el "Entrenamiento Libre"
+        // Usuario propietario del registro (permite separar series libres y por sesión por cuenta)
+        public Guid? UserId { get; set; }
+
+        // Sesión opcional para permitir "Entrenamiento Libre"
         public Guid? WorkoutSessionId { get; set; }
         public WorkoutSession? WorkoutSession { get; set; }
 
@@ -24,21 +27,43 @@ namespace PeriodizationApp.Core.Entities
 
         public string? Notes { get; set; }
 
-        // --- NUEVA MÉTRICA ANALÍTICA ---
+        // 1RM Estimado considerando proximidad al fallo (ActualReps + ActualRIR)
         public decimal Estimated1RM { get; set; }
 
-        // --- LÓGICA DE NEGOCIO (Domain-Driven Design) ---
+        // --- MOTOR BIOMECÁNICO BASADO EN EVIDENCIA (Epley + Brzycki ajustados por RIR) ---
         public void Calculate1RM()
         {
-            if (ActualReps > 0 && Weight > 0)
+            Estimated1RM = ComputeScientific1RM(Weight, ActualReps, ActualRIR);
+        }
+
+        public static decimal ComputeScientific1RM(decimal weight, int actualReps, int actualRir)
+        {
+            if (actualReps <= 0 || weight <= 0)
             {
-                // Fórmula de Epley adaptada a C# (Peso * (1 + (Reps / 30)))
-                Estimated1RM = Math.Round(Weight * (1m + ((decimal)ActualReps / 30m)), 2);
+                return 0m;
             }
-            else
+
+            // Repeticiones efectivas al fallo = Reps realizadas + Reps en reserva (limitado a RIR <= 5 para precisión)
+            int effectiveRir = Math.Clamp(actualRir, 0, 5);
+            int effectiveRepsToFailure = actualReps + effectiveRir;
+
+            if (effectiveRepsToFailure == 1)
             {
-                Estimated1RM = 0;
+                return Math.Round(weight, 2);
             }
+
+            // Rango 2-10 reps al fallo: Fórmula de Epley ajustada por RIR
+            if (effectiveRepsToFailure <= 10)
+            {
+                return Math.Round(weight * (1m + (effectiveRepsToFailure / 30m)), 2);
+            }
+
+            // Rango >10 reps al fallo: Promedio híbrido Epley + Brzycki para evitar sobreestimación en altas repeticiones
+            decimal epley = weight * (1m + (effectiveRepsToFailure / 30m));
+            int clampedForBrzycki = Math.Min(effectiveRepsToFailure, 30);
+            decimal brzycki = weight * (36m / (37m - clampedForBrzycki));
+
+            return Math.Round((epley + brzycki) / 2m, 2);
         }
     }
 }

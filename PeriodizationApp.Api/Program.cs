@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using PeriodizationApp.Core.Interfaces;
 using PeriodizationApp.Infrastructure;
@@ -16,8 +17,12 @@ builder.Services.AddScoped<IMesocycleRepository, MesocycleRepository>();
 builder.Services.AddScoped<IWorkoutSessionRepository, WorkoutSessionRepository>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 
-// 3. Soporte para Controladores 
-builder.Services.AddControllers();
+// 3. Soporte para Controladores con prevención de ciclos de serialización JSON
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+    });
 builder.Services.AddEndpointsApiExplorer();
 
 // 4. Configuración CORS (Permite conexión desde PC localhost, celular en red Wi-Fi y túneles externos)
@@ -33,7 +38,6 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// Solo redirigimos a HTTPS en producción para evitar bloqueos de certificado autofirmado al entrar desde el celular por IP local
 if (!app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();

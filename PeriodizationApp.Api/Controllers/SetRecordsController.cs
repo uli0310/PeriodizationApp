@@ -18,9 +18,9 @@ namespace PeriodizationApp.Api.Controllers
         }
 
         [HttpGet]
-        public async Task<IActionResult> GetAll()
+        public async Task<IActionResult> GetAll([FromQuery] Guid? userId = null)
         {
-            var sets = await _setRepository.GetAllAsync();
+            var sets = await _setRepository.GetAllAsync(userId);
             return Ok(sets);
         }
 
@@ -44,11 +44,11 @@ namespace PeriodizationApp.Api.Controllers
         }
 
         [HttpGet("exercise/{exerciseId:guid}")]
-        public async Task<IActionResult> GetExerciseHistory(Guid exerciseId)
+        public async Task<IActionResult> GetExerciseHistory(Guid exerciseId, [FromQuery] Guid? userId = null)
         {
             try
             {
-                var history = await _setRepository.GetByExerciseAsync(exerciseId);
+                var history = await _setRepository.GetByExerciseAsync(exerciseId, userId);
                 return Ok(history);
             }
             catch (Exception ex)

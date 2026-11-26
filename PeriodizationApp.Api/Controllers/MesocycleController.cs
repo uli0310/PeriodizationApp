@@ -109,6 +109,24 @@ namespace PeriodizationApp.Api.Controllers
                 return NotFound();
             }
 
+            // Desvincular series de las sesiones de este mesociclo para conservar el historial de fuerza del atleta
+            var sessionIds = await _context.WorkoutSessions
+                .Where(ws => ws.MesocycleId == id)
+                .Select(ws => ws.Id)
+                .ToListAsync();
+
+            if (sessionIds.Any())
+            {
+                var linkedSets = await _context.SetRecords
+                    .Where(sr => sr.WorkoutSessionId.HasValue && sessionIds.Contains(sr.WorkoutSessionId.Value))
+                    .ToListAsync();
+
+                foreach (var set in linkedSets)
+                {
+                    set.WorkoutSessionId = null;
+                }
+            }
+
             _context.Mesocycles.Remove(mesocycle);
             await _context.SaveChangesAsync();
 

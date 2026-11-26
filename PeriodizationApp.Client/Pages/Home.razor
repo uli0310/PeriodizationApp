@@ -1,6 +1,8 @@
 ﻿@page "/"
 @using PeriodizationApp.Core.Entities
+@implements IDisposable
 @inject HttpClient Http
+@inject UserSessionService Session
 @inject ISnackbar Snackbar
 @inject NavigationManager Navigation
 
@@ -8,12 +10,19 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
     <div>
-        <MudText Typo="Typo.h4" Class="fw-bold">Panel de Entrenamiento</MudText>
-        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Planificación inteligente y gestión de fatiga</MudText>
+        <MudText Typo="Typo.h4" Class="fw-bold">
+            Panel de Entrenamiento @(Session.IsAuthenticated ? $"— {Session.Username}" : "")
+        </MudText>
+        <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Planificación inteligente, periodización de RIR y gestión de fatiga</MudText>
     </div>
-    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.FitnessCenter" Href="/registrar">
-        Registrar Serie Rápida
-    </MudButton>
+    <div class="d-flex gap-2">
+        <MudButton Variant="Variant.Outlined" Color="Color.Info" StartIcon="@Icons.Material.Filled.ManageAccounts" Href="/login">
+            @(Session.IsAuthenticated ? "Cambiar Atleta" : "Iniciar Sesión")
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.FitnessCenter" Href="/registrar">
+            Registrar Serie Rápida
+        </MudButton>
+    </div>
 </div>
 <MudDivider Class="mb-6" />
 
@@ -23,9 +32,18 @@
 <MudCard Elevation="4" Class="mb-6 pa-4" Style="background: linear-gradient(145deg, #1c1f26, #15171c); border: 1px solid rgba(59, 130, 246, 0.25); border-radius: 16px;">
     <MudCardHeader>
         <CardHeaderContent>
-            <div class="d-flex align-items-center gap-2">
-                <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Color="Color.Primary" />
-                <MudText Typo="Typo.h5" Class="fw-bold">Recomendador de Rutinas (Control de Fatiga y SNC)</MudText>
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="d-flex align-items-center gap-2">
+                    <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Color="Color.Primary" />
+                    <MudText Typo="Typo.h5" Class="fw-bold">Recomendador de Rutinas (Control de Fatiga y SNC)</MudText>
+                </div>
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Info"
+                           Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Science"
+                           OnClick="@(() => mostrarEvidenciaHome = !mostrarEvidenciaHome)">
+                    @(mostrarEvidenciaHome ? "Ocultar Fundamento Científico" : "🔬 ¿Por qué se planifica así?")
+                </MudButton>
             </div>
             <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
                 Selecciona cuántos días a la semana puedes entrenar para obtener la distribución óptima de frecuencia, volumen y recuperación.
@@ -34,6 +52,22 @@
     </MudCardHeader>
 
     <MudCardContent>
+        @if (mostrarEvidenciaHome)
+        {
+            var planActual = ObtenerRecomendacion(diasSeleccionados);
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Icon="@Icons.Material.Filled.Biotech" Class="mb-4" Style="background-color: rgba(56, 189, 248, 0.06); border-radius: 12px;">
+                <MudText Typo="Typo.subtitle2" Color="Color.Info" Class="fw-bold mb-1">
+                    📚 Justificación Científica para @diasSeleccionados días (@planActual.NombreSplit):
+                </MudText>
+                <MudText Typo="Typo.body2" Class="mb-2">
+                    @planActual.JustificacionCientifica
+                </MudText>
+                <MudDivider Class="my-2" />
+                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">
+                    <strong>¿Por qué un bloque de 6 semanas con RIR progresivo?</strong> La síntesis de proteínas miofibrilares alcanza su pico entre 24 y 48 h post-ejercicio (<em>Schoenfeld et al., 2016</em>), por lo que la <strong>Frecuencia 2</strong> maximiza el estímulo semanal sin exceder el límite de series efectivas por sesión (~6–8 series por músculo por día). Además, iniciar en <strong>RIR 3 (Semana 1)</strong> y progresar hasta <strong>RIR 0-1 (Semana 5)</strong> antes de una <strong>Semana de Descarga (Semana 6)</strong> previene la fatiga central acumulada (<em>Helms et al., 2016</em>).
+                </MudText>
+            </MudAlert>
+        }
         <MudGrid Class="align-items-center">
             <MudItem xs="12" md="5">
                 <MudSelect T="int"
@@ -278,12 +312,12 @@ else
     private List<Mesocycle>? mesocycles;
     private string? errorMessage;
 
-    // ID real de usuario en la base de datos PostgreSQL
-    private readonly Guid myUserId = Guid.Parse("01a16050-b677-7a66-8e94-f01f9e256cfc");
+    private Guid myUserId => Session.UserId;
 
     private int diasSeleccionados = 4;
     private string nombreNuevoMesociclo = "Mesociclo Upper / Lower (4 Días)";
     private bool creandoMesociclo = false;
+    private bool mostrarEvidenciaHome = false;
 
     // Estado para edición y eliminación en línea
     private Guid? mesocicloEditandoId;
@@ -293,6 +327,7 @@ else
     private record PlanRecomendado(
         string NombreSplit,
         string Descripcion,
+        string JustificacionCientifica,
         string EtiquetaFatiga,
         Color ColorFatiga,
         string[] Sesiones
@@ -308,11 +343,35 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        Session.OnChange += OnSessionChanged;
+        await Session.InitializeAsync();
+        if (!Session.IsAuthenticated)
+        {
+            Navigation.NavigateTo("/login");
+            return;
+        }
         await CargarMesociclosAsync();
+    }
+
+    private async void OnSessionChanged()
+    {
+        await CargarMesociclosAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Session.OnChange -= OnSessionChanged;
     }
 
     private async Task CargarMesociclosAsync()
     {
+        if (!Session.IsAuthenticated || myUserId == Guid.Empty)
+        {
+            mesocycles = new();
+            return;
+        }
+
         try
         {
             errorMessage = null;
@@ -335,13 +394,21 @@ else
 
         if (semanaActual >= totalSemanas && totalSemanas >= 4)
         {
-            return new ProgresoBloque(semanaActual, totalSemanas, porcentaje, "Semana de Descarga (Deload)", Color.Warning);
+            return new ProgresoBloque(semanaActual, totalSemanas, porcentaje, "Descarga (Deload) • Target RIR 4 (-40% series)", Color.Warning);
         }
         if (semanaActual == 1)
         {
-            return new ProgresoBloque(semanaActual, totalSemanas, porcentaje, "Fase Intro / RIR 3", Color.Info);
+            return new ProgresoBloque(semanaActual, totalSemanas, porcentaje, "Fase Intro • Target RIR 3", Color.Info);
         }
-        return new ProgresoBloque(semanaActual, totalSemanas, porcentaje, "Fase Acumulación / RIR 1-2", Color.Success);
+        if (semanaActual == totalSemanas - 1 && totalSemanas >= 5)
+        {
+            return new ProgresoBloque(semanaActual, totalSemanas, porcentaje, "Fase Peak (Overreaching) • Target RIR 0-1", Color.Error);
+        }
+        if (semanaActual >= 4)
+        {
+            return new ProgresoBloque(semanaActual, totalSemanas, porcentaje, "Fase Sobrecarga • Target RIR 1", Color.Primary);
+        }
+        return new ProgresoBloque(semanaActual, totalSemanas, porcentaje, "Fase Acumulación • Target RIR 2", Color.Success);
     }
 
     private void IniciarEdicion(Mesocycle meso)
@@ -421,6 +488,7 @@ else
         2 => new PlanRecomendado(
             "Full Body (x2)",
             "Máxima recuperación y frecuencia 2 con bajo estrés sistémico.",
+            "Con solo 2 sesiones semanales, una rutina dividida dejaría 7 días de inactividad por músculo. El esquema Full Body estimula cada grupo muscular cada 72-96 horas, manteniendo elevada la síntesis proteica muscular (MPS) y permitiendo 5 días completos de recuperación neuroendocrina (Schoenfeld et al., 2016).",
             "Fatiga SNC: Muy Baja",
             Color.Success,
             new[] { "Día 1: Full Body A (Énfasis Fuerza)", "Día 2: Full Body B (Énfasis Hipertrofia)" }
@@ -428,6 +496,7 @@ else
         3 => new PlanRecomendado(
             "Upper / Lower / Full Body",
             "Reparte el volumen para evitar fatiga excesiva del SNC.",
+            "A diferencia de hacer 3 sesiones Full Body (donde el tercer día suele sufrir fatiga axial acumulada), el híbrido Torso / Pierna / Full Body logra Frecuencia 2 en todos los músculos otorgando 48-72 horas de recuperación articular y espinal entre sesiones de tren inferior (Pelland et al., 2024).",
             "Fatiga SNC: Baja-Moderada",
             Color.Success,
             new[] { "Día 1: Upper Body (Torso)", "Día 2: Lower Body (Pierna)", "Día 3: Full Body" }
@@ -435,6 +504,7 @@ else
         4 => new PlanRecomendado(
             "Upper / Lower (Torso / Pierna)",
             "Equilibrio óptimo entre frecuencia 2, volumen y 3 días de descanso.",
+            "La literatura muestra un techo de ~6 a 8 series efectivas por grupo muscular en una sola sesión antes de que caiga la calidad mecánica ('junk volume'). Dividir en 2 días de Torso y 2 de Pierna permite acumular 12-16 series semanales de máxima calidad con 72 horas de recuperación por grupo (Dankel et al., 2017).",
             "Fatiga SNC: Óptima / Balanceada",
             Color.Info,
             new[] { "Día 1: Upper A (Torso Fuerza)", "Día 2: Lower A (Pierna Fuerza)", "Día 3: Upper B (Torso Hipertrofia)", "Día 4: Lower B (Pierna Hipertrofia)" }
@@ -442,6 +512,7 @@ else
         5 => new PlanRecomendado(
             "Upper / Lower / Push / Pull / Legs",
             "Alto volumen controlado evitando fatiga axial acumulada.",
+            "Permite alcanzar volúmenes altos (14-18 series/semana) distribuyendo el trabajo de torso en 3 sesiones más cortas (Upper + Push + Pull) y manteniendo 2 sesiones de pierna separadas por 72 horas, evitando que la fatiga sistémica limite el reclutamiento de fibras en los últimos ejercicios de cada día.",
             "Fatiga SNC: Moderada-Alta",
             Color.Warning,
             new[] { "Día 1: Upper Body", "Día 2: Lower Body", "Día 3: Push (Empuje)", "Día 4: Pull (Tracción)", "Día 5: Legs (Pierna)" }
@@ -449,6 +520,7 @@ else
         6 => new PlanRecomendado(
             "Push / Pull / Legs (x2)",
             "Solo recomendado con volumen moderado por sesión y control estricto de RIR.",
+            "Agrupa músculos sinergistas (Empuje, Tracción, Pierna) para evitar solapamiento de fatiga en días consecutivos. Sin embargo, al dejar solo 1 día de descanso total por semana, exige mantener 4-6 series por músculo por sesión y un RIR estricto de 1-2 para no superar el Volumen Máximo Recuperable (MRV) del SNC.",
             "Fatiga SNC: Alta (Controlar RIR 1-2)",
             Color.Error,
             new[] { "Día 1: Push A", "Día 2: Pull A", "Día 3: Legs A", "Día 4: Push B", "Día 5: Pull B", "Día 6: Legs B" }
@@ -456,6 +528,7 @@ else
         _ => new PlanRecomendado(
             "Upper / Lower (Torso / Pierna)",
             "Equilibrio óptimo entre frecuencia 2, volumen y 3 días de descanso.",
+            "Equilibrio ideal entre estímulo mecánico por sesión y disipación de fatiga central.",
             "Fatiga SNC: Óptima / Balanceada",
             Color.Info,
             new[] { "Día 1: Upper A", "Día 2: Lower A", "Día 3: Upper B", "Día 4: Lower B" }
